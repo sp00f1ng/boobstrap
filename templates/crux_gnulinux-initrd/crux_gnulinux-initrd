@@ -3,6 +3,12 @@
 crux_gnulinux() {
 	importroot "$DIR/initramfs" < "$PWD/crux_gnulinux-embedded.rootfs"
 
+	mkbootstrap "crux_gnulinux" "$DIR/initramfs"					\
+											\
+		--ports "$PWD/cruxports"						\
+											\
+		"linux"
+
 	echo "#! /sbin/init" > "$DIR/initramfs/init"
 	chmod +x "$DIR/initramfs/init"
 

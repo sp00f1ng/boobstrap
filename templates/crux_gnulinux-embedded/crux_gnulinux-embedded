@@ -3,7 +3,7 @@
 crux_gnulinux() {
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap"					\
 											\
-		--ports-dir "$PWD/cruxmedia/crux/core"					\
+		--ports "$PWD/cruxmedia/crux/core"					\
 											\
 		"acl"			"gzip"			"procps"		\
 		"attr"			"iana-etc"		"psmisc"		\

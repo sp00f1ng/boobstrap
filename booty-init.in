@@ -69,6 +69,10 @@ search_filesystem() {
 	if test -d "$SEARCH_ROOTFS"; then
 		for fs in "$SEARCH_ROOTFS/"*; do
 			echo "In $fs ..."
+			if test -d "$fs"; then
+				echo "Directory $fs in use"
+				continue
+			fi
 			search_filesystem -s "$fs" -o "$OVERLAY_PATH" -x "$EXTRACT_PATH"
 		done
 		
@@ -78,6 +82,17 @@ search_filesystem() {
 	echo "Filesystem $SEARCH_ROOTFS"
 
 	case "$SEARCH_ROOTFS" in
+		*".squashfs")
+			if test "$EXTRACT_PATH"; then
+				use_driver_mount "$SEARCH_ROOTFS" "$OVERLAY_PATH$SEARCH_ROOTFS"
+				use_driver_directory "$OVERLAY_PATH$SEARCH_ROOTFS" "$EXTRACT_PATH"
+				umount "$OVERLAY_PATH$SEARCH_ROOTFS"
+				CODE="$?"
+			else
+				use_driver_mount "$SEARCH_ROOTFS" "$OVERLAY_PATH$SEARCH_ROOTFS"
+				CODE="$?"
+			fi
+			;;
 		*".cpio"|*".dat")
 			if test "$EXTRACT_PATH"; then
 				use_driver_cpio "$SEARCH_ROOTFS" "$EXTRACT_PATH"
@@ -87,14 +102,12 @@ search_filesystem() {
 				CODE="$?"
 			fi
 			;;
-		*".squashfs")
+		*)
 			if test "$EXTRACT_PATH"; then
-				use_driver_mount "$SEARCH_ROOTFS" "$OVERLAY_PATH$SEARCH_ROOTFS"
-				cp -a -f "$OVERLAY_PATH$SEARCH_ROOTFS/"* "$EXTRACT_PATH"
-				umount "$OVERLAY_PATH$SEARCH_ROOTFS"
+				use_driver_directory "$SEARCH_ROOTFS" "$EXTRACT_PATH"
 				CODE="$?"
 			else
-				use_driver_mount "$SEARCH_ROOTFS" "$OVERLAY_PATH$SEARCH_ROOTFS"
+				use_driver_directory "$SEARCH_ROOTFS" "$OVERLAY_PATH$SEARCH_ROOTFS"
 				CODE="$?"
 			fi
 			;;
@@ -108,6 +121,14 @@ search_filesystem() {
 	fi
 
 	return $CODE
+}
+
+use_driver_directory() {
+	mkdir -p "$2"
+	if cp -a -f "$1/"* "$2"; then
+		return 0
+	fi
+	return 1
 }
 
 use_driver_mount() {
@@ -133,7 +154,8 @@ cheat_sheet() {
 		case "$1" in
 			"booty.search-rootfs="*) SEARCH_ROOTFS="${1##*=}" ;;
 			"booty.rootfs-changes="*) ROOTFS_CHANGES="${1##*=}" ;;
-			"booty.rootfs-sizeof="*) ROOTFS_SIZEOF="${1##*=}" ;;
+			"booty.size-of-rootfs="*) SIZE_OF_ROOTFS="${1##*=}" ;;
+			"booty.volume="*) echo "${1#*=}" >> /etc/.volume ;;
 			"booty.use-overlayfs") USE_FILESYSTEM="OVERLAY_FS" ;;
 			"booty.use-shmfs") USE_FILESYSTEM="SHMFS" ;;
 			"booty.copy-to-ram"|"toram") COPY_TO_RAM="yes" ;;
@@ -170,8 +192,8 @@ main() {
 		SEARCH_ROOTFS="/system"
 	fi
 
-	if test "$ROOTFS_SIZEOF" = ""; then
-		ROOTFS_SIZEOF="50%"
+	if test "$SIZE_OF_ROOTFS" = ""; then
+		SIZE_OF_ROOTFS="50%"
 	fi
 
 	if test "$COPY_TO_RAM" = ""; then
@@ -241,7 +263,7 @@ main() {
 		mount -t tmpfs -o size=1% tmpfs "$DRIVER_PATH" # 1% enough for mounts only
 
 		mkdir -p "$SWITCH_ROOTFS"
-		mount -t tmpfs -o size="$ROOTFS_SIZEOF" tmpfs "$SWITCH_ROOTFS"
+		mount -t tmpfs -o size="$SIZE_OF_ROOTFS" tmpfs "$SWITCH_ROOTFS"
 
 		# TODO
 		# 1. Using block devices in SHMFS (SWITCH_ROOTFS="$ROOT" if $COPY_TO_RAM = "yes")
@@ -259,7 +281,7 @@ main() {
 		mount -t tmpfs -o size=100% tmpfs "$DRIVER_PATH"
 
 		mkdir -p "$SWITCH_ROOTFS"
-		mount -t tmpfs -o size="$ROOTFS_SIZEOF" tmpfs "$SWITCH_ROOTFS"
+		mount -t tmpfs -o size="$SIZE_OF_ROOTFS" tmpfs "$SWITCH_ROOTFS"
 
 		echo "Searching filesystem"
 		if test -b "$SEARCH_ROOTFS"; then
@@ -271,7 +293,7 @@ main() {
 			# Should be: 10 20 30 100
 			# Reading from file is a good idea
 			#while read ROOT; do
-				search_filesystem -s "$ROOT" -o "$DRIVER_PATH"
+				search_filesystem -s "$ROOT" -o "$DRIVER_PATH" -x ""
 			#done < /tmp/.search_rootfs
 		fi
 		echo "Searching filesystem done"
@@ -310,7 +332,6 @@ main() {
 				mkdir -p "$SWITCH_ROOTFS$DRIVER_PATH"
 				mount -o bind,ro "$DRIVER_PATH" "$SWITCH_ROOTFS$DRIVER_PATH"
 			else
-				echo "Unable to run mount -t overlay"
 				echo "Check your /proc/config* for CONFIG_OVERLAY_FS support"
 			fi
 		else
@@ -318,15 +339,23 @@ main() {
 		fi
 	fi
 
-	echo "Uninstall /proc /sys /dev /run"
-
-	umount /proc
-	umount /sys
-	umount /dev
-	umount /run
+	# TODO
+	# Prepare /etc/fstab
+	# Do mount -a -O no_netdev
+	# Instead of this dirty hack
+	while read volume; do
+		echo "Volume: $volume"
+	done < /tmp/.volume
 
 	if test -x "$SWITCH_ROOTFS/sbin/init"; then
-		echo "Switch root to merged tmpfs"
+		echo "Uninstall /proc /sys /dev /run"
+
+		umount /proc
+		umount /sys
+		umount /dev
+		umount /run
+
+		echo "Switching root"
 		exec switch_root "$SWITCH_ROOTFS" "/sbin/init" 2>/dev/null
 	else
 		echo "Where there is a shell, there is a way..."

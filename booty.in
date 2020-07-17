@@ -67,7 +67,7 @@ exit 0
 				TARGET="$DESTINATION/$NUM-$(basename $overlay).cpio"
 				echo "CPIO [$SOURCE] => [$TARGET]" | msg -2 --foreground "Light Blue"
 				cd "$SOURCE"
-				find . -print0 | cpio --create --format "newc" --null --quiet >"$TARGET" 2>/dev/null
+				find . -print0 | cpio --create --format "newc" --null --quiet 1>$TARGET 2>/dev/null
 				CODE="$?"
 				cd "$OLDPWD"
 				;;
@@ -75,7 +75,7 @@ exit 0
 				SOURCE="$overlay"
 				TARGET="$DESTINATION/$NUM-$(basename $overlay).squashfs"
 				echo "SquashFS [$SOURCE] => [$TARGET]" | msg -2 --foreground "Light Blue"
-				mksquashfs "$SOURCE" "$TARGET" -quiet 1>/dev/null
+				mksquashfs "$SOURCE" "$TARGET" -quiet 1>/dev/null 2>/dev/null
 				CODE="$?"
 				;;
 			*)
@@ -623,7 +623,7 @@ for BOOTY_CONF in "/etc/booty/booty.conf"; do
 	fi
 done
 
-readonly BOOTY_NAME="BOOTY"
+readonly BOOTY_NAME="booty"
 readonly BOOTY_VERSION="1.2"
 
 main "$@"
