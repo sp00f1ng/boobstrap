@@ -108,19 +108,18 @@ But its optional. You can just use SHMFS if you have enough RAM for your system.
 
 ## Installation
 
-Generic GNU/Linux
+* Generic GNU/Linux
 ```sh
 git clone https://github.com/sp00f1ng/booty.git
 cd booty
 make install
 ```
 
-ArchLinux
+* ArchLinux
+
+There is an AUR package `booty-git`. Install it with your preferred tool, `pacaur` just for example.
 ```sh
-git clone https://github.com/sp00f1ng/booty.git
-cd booty
-make arch-pkg
-pacman -U packages/ArchLinux/booty-git-*.pkg.tar.xz
+pacaur -S booty-git
 ```
 
 ## Quick start

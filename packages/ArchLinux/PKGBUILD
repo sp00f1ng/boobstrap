@@ -1,5 +1,5 @@
 # Maintainer: Denis Zheleztsov <difrex@lessmore.pw>
-pkgname=boobstrap-git
+pkgname=booty-git
 pkgver=20200611.45_3fe32b1
 pkgrel=1
 pkgdesc="Create bootable GNU/Linux image with 3 steps!"
@@ -16,7 +16,7 @@ makedepends=(
 	'make'
 )
 source=(
-	"$pkgname::git+https://github.com/sp00f1ng/boobstrap.git"
+	"$pkgname::git+https://github.com/sp00f1ng/booty.git"
 )
 md5sums=('SKIP')
 
