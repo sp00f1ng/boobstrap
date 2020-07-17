@@ -11,11 +11,11 @@ booty is a scripts complex for creating bootable GNU/Linux images.
     - [Installation](#installation)
     - [Quick start](#quick-start)
     - [Boot options](#boot-options)
-        - [boobs.use-shmfs](#boobs.use-shmfs)
-        - [boobs.use-overlayfs](#boobs.use-overlayfs)
-        - [boobs.search-rootfs](#boobs.search-rootfs)
-        - [boobs.copy-to-ram](#boobs.copy-to-ram)
-        - [boobs.rootfs-changes](#boobs.rootfs-changes)
+        - [booty.use-shmfs](#booty.use-shmfs)
+        - [booty.use-overlayfs](#booty.use-overlayfs)
+        - [booty.search-rootfs](#booty.search-rootfs)
+        - [booty.copy-to-ram](#booty.copy-to-ram)
+        - [booty.rootfs-changes](#booty.rootfs-changes)
     - [Utilities](#utilities)
         - [mkbootstrap](#mkbootstrap)
         - [mkinitramfs](#mkinitramfs)
@@ -135,7 +135,7 @@ Quick Start (just run a test):
 
 booty's /init script can handle some kernel options ("cheats") while system boots.
 
-### boobs.use-shmfs
+### booty.use-shmfs
 
 All system data will be extracted to the pure "tmpfs" filesystem and then continue booting.
 
@@ -146,14 +146,14 @@ system will be loaded completly they needed a 2GB of RAM: 1GB for rootfs.cpio an
 one more 1GB for extracted data. Use this with carefully. But if your image stores on
 ISO (not in initrd) you need only 1GB free of RAM.
 
-### boobs.use-overlayfs
+### booty.use-overlayfs
 
 All system data will be mounted as overlays. This is recommended usage option, but you
 should enable the CONFIG_OVERLAY_FS=y in your kernel config.
 
-### boobs.search-rootfs
+### booty.search-rootfs
 
-Option required argument: `boobs.search-rootfs=file` or `boobs.search-rootfs=directory`.
+Option required argument: `booty.search-rootfs=file` or `booty.search-rootfs=directory`.
 
 Search selected file or the directory with overlays on storage devices while booting.
 
@@ -161,22 +161,22 @@ By default all created overlays stores in /system/overlays directory, but you ca
 own overlay with naming "filesystem.squashfs", put in root of your HDD and set this option:
 
 ```sh
-boobs.search-rootfs=/filesystem.squashfs
+booty.search-rootfs=/filesystem.squashfs
 ```
 
-### boobs.copy-to-ram
+### booty.copy-to-ram
 
 Will copy overlays to the RAM before mounting.
 
 For example, you can boot with USB and unplug your USB-stick after system boots.
 
-### boobs.rootfs-changes
+### booty.rootfs-changes
 
 While using Overlay FS all your data stores in SHMFS (tmpfs, ramffs) by default, but you can
 create a empty file on your storage device, then create any supported by kernel filesystem on
 this file (image) and use it as storage for your data, instead of storing data in temporarely SHMFS.
 
-Example `boobs.rootfs-changes=/dev/sda1` for using whole /dev/sda1 as storage for any changes.
+Example `booty.rootfs-changes=/dev/sda1` for using whole /dev/sda1 as storage for any changes.
 While reboots cache-data is keep. Storage (file with filesystem) must be created manually.
 
 ## Utilities
@@ -503,11 +503,11 @@ And then setup your bootloader for booting by using this initrd with pass some
 options to the kernel.
 
 ```sh
-linux /boot/vmlinuz boobs.use-overlayfs boobs.search-rootfs=/gentoo.squashfs
+linux /boot/vmlinuz booty.use-overlayfs booty.search-rootfs=/gentoo.squashfs
 initrd /boot/initrd
 ```
 
-Optional add the `boobs.copy-to-ram` option for booting to RAM and take out your
+Optional add the `booty.copy-to-ram` option for booting to RAM and take out your
 storage device.
 
 Thats it. It can be USB storage or something else, you can setup your configuration
