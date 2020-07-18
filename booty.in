@@ -468,13 +468,13 @@ exit 0
 				--output="$DIR/efi/boot/bootx64.efi" \
 				--format="x86_64-efi" \
 				--prefix="/boot/grub" \
-				iso9660 normal search search_fs_file
+				iso9660 part_msdos part_gpt fat normal search search_fs_file
 			grub-mkimage \
 				--config="$DIR/boot/grub/grub.cfg" \
 				--output="$DIR/efi/boot/bootia32.efi" \
 				--format="i386-efi" \
 				--prefix="/boot/grub" \
-				iso9660 normal search search_fs_file
+				iso9660 part_msdos part_gpt fat normal search search_fs_file
 			mkdosfs -C -n "MS-DOS" "$DIR/efi/boot/floppy.img" 1440 1>/dev/null
 			mount -o loop "$DIR/efi/boot/floppy.img" "$DIR/boot"
 			mkdir -p "$DIR/boot/efi/boot"
