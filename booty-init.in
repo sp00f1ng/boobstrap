@@ -343,9 +343,9 @@ main() {
 	# Prepare /etc/fstab
 	# Do mount -a -O no_netdev
 	# Instead of this dirty hack
-	while read volume; do
-		echo "Volume: $volume"
-	done < /tmp/.volume
+	# while read volume; do
+	#	echo "Volume: $volume"
+	# done < /tmp/.volume
 
 	if test -x "$SWITCH_ROOTFS/sbin/init"; then
 		echo "Uninstall /proc /sys /dev /run"

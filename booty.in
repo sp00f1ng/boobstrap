@@ -75,7 +75,7 @@ exit 0
 				SOURCE="$overlay"
 				TARGET="$DESTINATION/$NUM-$(basename $overlay).squashfs"
 				echo "SquashFS [$SOURCE] => [$TARGET]" | msg -2 --foreground "Light Blue"
-				mksquashfs "$SOURCE" "$TARGET" -quiet 1>/dev/null 2>/dev/null
+				mksquashfs "$SOURCE" "$TARGET" -quiet -b 1048576 -comp xz -Xdict-size 100% 1>/dev/null 2>/dev/null
 				CODE="$?"
 				;;
 			*)
@@ -205,10 +205,7 @@ exit 0
 		lo
 	fi
 	if test "$IS_STANDALONE" = "yes"; then
-		if test -a "$DIR/init"; then
-			echo "Found /init" | msg -2
-		else
-			echo "Empty /init is now wrapper for /sbin/init" | msg -2
+		if ! test -e "$DIR/init"; then
 			echo "#! /sbin/init" > "$DIR/init"
 			chmod +x "$DIR/init"
 		fi
@@ -344,9 +341,10 @@ exit 0
 			SYSLINUX_UEFI_LDLINUX="$dir/ldlinux.e64"
 		fi
 	done
-	for dir in "/usr/lib/grub/i386-pc" "/lib/grub/i386-pc" "$GRUB_PATH"; do
-		if test -f "$dir/cdboot.img"; then
-			GRUB_BIOS_CDBOOT="$dir/cdboot.img"
+	for dir in "/usr/lib/grub" "/lib/grub" "$GRUB_PATH"; do
+		if test -f "$dir/i386-pc/cdboot.img"; then
+			GRUB_PATH="$dir"
+			GRUB_BIOS_CDBOOT="$dir/i386-pc/cdboot.img"
 		fi
 	done
 	case "$LOADER_LEGACY_BOOT" in
@@ -366,33 +364,34 @@ exit 0
 		TYP="$(fdisk -l $DEV | grep Disklabel\ type: | cut -d " " -f 3)"
 		echo "Creating bootable device [$DEV]" | msg -2
 		hi
+		#
+		# FIXME: syslinux legacy boot on gpt is broken
+		# NOTABUG: grub2 requires "BIOS boot" partition
+		#
 		if test "$LOADER_LEGACY_BOOT" = "SYSLINUX"; then
-			echo "Installing syslinux as legacy boot loader" | msg -2 --foreground "Light Blue"
-			hi
-			echo "syslinux says:" | msg -2 --foreground "Light Blue"
-			mkdir -p "$DIR/boot/syslinux"
-			cp "/etc/booty/syslinux.conf" "$DIR/boot/syslinux/syslinux.cfg"
 			case "$TYP" in
 				"dos") SYSLINUX_MBR="$SYSLINUX_BIOS_MBR" ;;
 				"gpt") SYSLINUX_MBR="$SYSLINUX_BIOS_GPTMBR" ;;
 				*) SYSLINUX_MBR="$SYSLINUX_BIOS_MBR" ;;
 			esac
-			cat "$SYSLINUX_MBR" > $DEV
-			extlinux --install "$DIR/boot/syslinux" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
+			echo "Installing syslinux as legacy boot loader" | msg -2 --foreground "Light Blue"
+			hi
+			mkdir -p "$DIR/efi/boot"
+			cp "/etc/booty/syslinux.conf" "$DIR/efi/boot/syslinux.cfg"
+			extlinux --install "$DIR/efi/boot" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
+			cat "$SYSLINUX_MBR" > "$DEV"
 			lo
 		fi
 		if test "$LOADER_EFI" = "SYSLINUX"; then
 			echo "Installing syslinux as efi loader" | msg -2 --foreground "Light Blue"
-			mkdir -p "$DIR/boot/syslinux"
 			mkdir -p "$DIR/efi/boot"
-			cp "/etc/booty/syslinux.conf" "$DIR/boot/syslinux/syslinux.cfg"
+			cp "/etc/booty/syslinux.conf" "$DIR/efi/boot/syslinux.cfg"
 			cp "$SYSLINUX_UEFI_EFIBOOT" "$DIR/efi/boot/bootx64.efi"
 			cp "$SYSLINUX_UEFI_LDLINUX" "$DIR/efi/boot/"
 		fi
 		if test "$LOADER_LEGACY_BOOT" = "GRUB2"; then
 			echo "Installing grub2 as legacy boot loader" | msg -2 --foreground "Light Blue"
 			hi
-			echo "grub2 says:" | msg -2 --foreground "Light Blue"
 			mkdir -p "$DIR/boot/grub"
 			cp "/etc/booty/grub.conf" "$DIR/boot/grub/grub.cfg"
 			grub-install "$DEV"			\
@@ -404,7 +403,6 @@ exit 0
 		if test "$LOADER_EFI" = "GRUB2"; then
 			echo "Installing grub2 as efi loader" | msg -2 --foreground "Light Blue"
 			hi
-			echo "grub2 says:" | msg -2 --foreground "Light Blue"
 			mkdir -p "$DIR/boot/grub"
 			cp "/etc/booty/grub.conf" "$DIR/boot/grub/grub.cfg"
 			grub-install				\
@@ -437,7 +435,7 @@ exit 0
 		fi
 		if test "$LOADER_EFI" = "SYSLINUX"; then
 			ISO_9660_EFI=""
-			echo "syslinux doesn't support EFI-mode for ISO" | msg -2 --foreground "Light Blue"
+			echo "syslinux can't boot iso in efi-mode" | msg -2 --foreground "Light Blue"
 		fi
 		if test "$LOADER_LEGACY_BOOT" = "GRUB2"; then
 			ISO_9660_LEGACY_BOOT="-b boot/grub/bios.img -no-emul-boot -boot-load-size 4 -boot-info-table"
@@ -455,31 +453,39 @@ exit 0
 			cat "$GRUB_BIOS_CDBOOT" "$DIR/boot/grub/grub.raw" > $DIR/boot/grub/bios.img
 		fi
 		if test "$LOADER_EFI" = "GRUB2"; then
-			ISO_9660_EFI="-eltorito-alt-boot -e boot/grub/uefi.img -no-emul-boot"
+			ISO_9660_EFI="-eltorito-alt-boot -e efi/boot/floppy.img -no-emul-boot"
+			mkdir -p "$DIR/efi/boot"
 			mkdir -p "$DIR/boot/grub"
-			cp "/etc/booty/grub.conf" "$DIR/boot/grub/grub.cfg"
-			grub-mkstandalone \
+			mkdir -p "$DIR/boot/grub/x86_64-efi"
+			mkdir -p "$DIR/boot/grub/i386-efi"
+			cp -a "$GRUB_PATH/x86_64-efi/"*".mod" "$DIR/boot/grub/x86_64-efi"
+			cp -a "$GRUB_PATH/x86_64-efi/"*".lst" "$DIR/boot/grub/x86_64-efi"
+			cp -a "$GRUB_PATH/i386-efi/"*".mod" "$DIR/boot/grub/i386-efi"
+			cp -a "$GRUB_PATH/i386-efi/"*".lst" "$DIR/boot/grub/i386-efi"
+			echo 'search --file --no-floppy --set root /efi/boot/floppy.img' > "$DIR/boot/grub/grub.cfg"
+			grub-mkimage \
+				--config="$DIR/boot/grub/grub.cfg" \
+				--output="$DIR/efi/boot/bootx64.efi" \
 				--format="x86_64-efi" \
-				--output="$DIR/boot/grub/grub.efi" \
-				--modules="" \
-				--locales="" \
-				--fonts="" \
-				--themes="" \
-				"/boot/grub/grub.cfg=$DIR/boot/grub/grub.cfg"
-			truncate -s "10MB" "$DIR/boot/grub/uefi.img"
-			mkdosfs "$DIR/boot/grub/uefi.img" 1>/dev/null
-			mkdir "$DIR/uefi"
-			mount "$DIR/boot/grub/uefi.img" "$DIR/uefi"
-			mkdir "$DIR/uefi/EFI"
-			mkdir "$DIR/uefi/EFI/BOOT"
-			cp "$DIR/boot/grub/grub.efi" "$DIR/uefi/EFI/BOOT/BOOTX64.EFI"
-			umount "$DIR/uefi"
-			rmdir "$DIR/uefi"
+				--prefix="/boot/grub" \
+				iso9660 normal search search_fs_file
+			grub-mkimage \
+				--config="$DIR/boot/grub/grub.cfg" \
+				--output="$DIR/efi/boot/bootia32.efi" \
+				--format="i386-efi" \
+				--prefix="/boot/grub" \
+				iso9660 normal search search_fs_file
+			mkdosfs -C -n "MS-DOS" "$DIR/efi/boot/floppy.img" 1440 1>/dev/null
+			mount -o loop "$DIR/efi/boot/floppy.img" "$DIR/boot"
+			mkdir -p "$DIR/boot/efi/boot"
+			cp "$DIR/efi/boot/bootx64.efi" "$DIR/boot/efi/boot"
+			cp "$DIR/efi/boot/bootia32.efi" "$DIR/boot/efi/boot"
+			umount "$DIR/boot"
+			cp "/etc/booty/grub.conf" "$DIR/boot/grub/grub.cfg"
 		fi
 		if test "$ISO_9660_RUN" = "genisoimage"; then
 			echo "Creating iso image using genisoimage" | msg -2 --foreground "Light Blue"
 			hi
-			echo "genisoimage quote:" | msg -2 --foreground "Light Blue"
 			genisoimage -v -J -r -V "$ISO_9660_LABEL" -A "$ISO_9660_LABEL" \
 				$ISO_9660_LEGACY_BOOT \
 				$ISO_9660_EFI \
@@ -490,7 +496,6 @@ exit 0
 		if test "$ISO_9660_RUN" = "xorrisofs"; then
 			echo "Creating iso image using xorrisofs" | msg -2 --foreground "Light Blue"
 			hi
-			echo "xorrisofs quote:" | msg -2 --foreground "Light Blue"
 			xorrisofs -v -J -r -V "$ISO_9660_LABEL" -A "$ISO_9660_LABEL" \
 				$ISO_9660_LEGACY_BOOT \
 				$ISO_9660_EFI \
