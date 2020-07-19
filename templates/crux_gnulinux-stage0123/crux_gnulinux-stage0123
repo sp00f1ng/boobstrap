@@ -1,10 +1,10 @@
 #! /usr/bin/env sh
 
 #
-# stage 0: install environment from untrusted master
+# stage 0: build from untrusted master
 #
 stage0() {
-	test -f "crux.iso" || wget -T 5 -O "crux.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso"
+	DIR="$1"
 
 	mkdir "$PWD/cruxmedia"
 	mount "$PWD/crux.iso" "$PWD/cruxmedia"
@@ -82,8 +82,10 @@ EOF
 # stage 1: build untrusted world
 #
 stage1() {
+	DIR="$1"
+
 	mkdir "$PWD/cruxmedia"
-	mount "$PWD/crux.iso" "$PWD/cruxmedia" || return 1
+	mount "$PWD/crux.iso" "$PWD/cruxmedia"
 
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 
@@ -159,6 +161,8 @@ EOF
 # stage 2: build trusted world
 #
 stage2() {
+	DIR="$1"
+
 	mkdir "$PWD/cruxmedia"
 	mount "$PWD/crux.iso" "$PWD/cruxmedia"
 
@@ -278,22 +282,38 @@ leave_chroot() {
 #
 # main
 #
+run_stage() {
+	STAGE="$1"
+	DIR="$(mktemp -d -p $PWD)"
+
+	if test "$STAGE" = "0"; then
+		test -f "crux.iso" || wget -T 5 -O "crux.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso" || return 1
+	fi
+
+	echo "BUILD: stage $STAGE: tail -f $PWD/stage$STAGE.log"
+
+	case "$STAGE" in
+		"0") stage0 "$DIR" >$PWD/stage0.log 2>&1 ;;
+		"1") stage1 "$DIR" >$PWD/stage1.log 2>&1 ;;
+		"2") stage2 "$DIR" >$PWD/stage2.log 2>&1 ;;
+		"3") stage3 "$DIR" >$PWD/stage3.log 2>&1 ;;
+	esac
+
+	# grep "$DIR" "/proc/mounts" || rm -r -f "$DIR"
+
+	test -f "crux.iso" || echo "FATAL: stage $STAGE failed"
+}
+
 main() {
+	case "$1" in
+		[0-3])
+			run_stage "$1"
+			return 0
+			;;
+	esac
+
 	for stage in 0 1 2 3; do
-		DIR="$(mktemp -d -p $PWD)"
-
-		for dir in bootstrap initramfs bootimage; do
-			mkdir "$DIR/$dir"
-		done
-
-		case "$stage" in
-			"0") stage0 "$DIR" ;;
-			"1") stage1 "$DIR" ;;
-			"2") stage2 "$DIR" ;;
-			"3") stage3 "$DIR" ;;
-		esac
-
-		grep "$DIR" "/proc/mounts" || rm -r -f "$DIR"
+		run_stage "$stage"
 	done
 }
 
