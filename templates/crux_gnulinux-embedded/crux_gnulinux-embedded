@@ -5,23 +5,24 @@ crux_gnulinux() {
 											\
 		--ports "$PWD/cruxmedia/crux/core"					\
 											\
-		"acl"			"gzip"			"procps"		\
-		"attr"			"iana-etc"		"psmisc"		\
-		"bash"			"inetutils"		"rc"			\
-		"bzip2"			"iproute2"		"readline"		\
-		"ca-certificates"	"iptables"		"sed"			\
-		"coreutils"		"kbd"			"shadow"		\
-		"dash"			"kmod"			"start-stop-daemon"	\
-		"dcron"			"less"			"sysklogd"		\
-		"dhcpcd"		"libcap"		"sysvinit"		\
-		"e2fsprogs"		"libdevmapper"		"tar"			\
-		"eudev"			"libpcre"		"tzdata"		\
-		"file"			"linux-pam"		"util-linux"		\
-		"filesystem"		"lzo"			"vim"			\
-		"findutils"		"ncurses"		"wget"			\
-		"gawk"			"openssh"		"which"			\
-		"glibc"			"openssl"		"xz"			\
-		"grep"			"pkgutils"		"zlib"
+		"acl"			"iana-etc"		"procps"		\
+		"attr"			"inetutils"		"psmisc"		\
+		"bash"			"iproute2"		"rc"			\
+		"bzip2"			"iptables"		"readline"		\
+		"ca-certificates"	"kbd"			"sed"			\
+		"coreutils"		"kmod"			"shadow"		\
+		"dash"			"less"			"start-stop-daemon"	\
+		"dcron"			"libcap"		"sysklogd"		\
+		"dhcpcd"		"libdevmapper"		"sysvinit"		\
+		"e2fsprogs"		"libgmp"		"tar"			\
+		"eudev"			"libmpfr"		"tzdata"		\
+		"file"			"libpcre"		"util-linux"		\
+		"filesystem"		"linux-pam"		"vim"			\
+		"findutils"		"lzo"			"wget"			\
+		"gawk"			"ncurses"		"which"			\
+		"glibc"			"openssh"		"xz"			\
+		"grep"			"openssl"		"zlib"			\
+		"gzip"			"pkgutils"
 
 	exportroot "$DIR/bootstrap" > "$PWD/crux_gnulinux-embedded.rootfs"
 }
