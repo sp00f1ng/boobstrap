@@ -8,14 +8,9 @@ stage0() {
 
 	mkdir "$PWD/cruxmedia"
 	mount "$PWD/crux.iso" "$PWD/cruxmedia"
-
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
-
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/opt" "fakeroot"
-
 	umount "$PWD/cruxmedia"
-	rmdir "$PWD/cruxmedia"
-	rm "$PWD/crux.iso"
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -69,10 +64,7 @@ EOF
 	leave_chroot "$DIR/bootstrap"
 
 	mkdir -p "$PWD/cruxmedia/crux/core"
-	find "$DIR/bootstrap/usr/ports" -name "*.pkg.tar.xz" -exec mv "{}" "$PWD/cruxmedia/crux/core" \;
-
-	# we can't trust to these sources
-	# tar -c -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports" .
+	find "$DIR/bootstrap/usr/ports" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$PWD/crux.iso"
 	rm -r -f "$PWD/cruxmedia"
@@ -86,12 +78,8 @@ stage1() {
 
 	mkdir "$PWD/cruxmedia"
 	mount "$PWD/crux.iso" "$PWD/cruxmedia"
-
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
-
 	umount "$PWD/cruxmedia"
-	rmdir "$PWD/cruxmedia"
-	rm "$PWD/crux.iso"
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -99,6 +87,12 @@ stage1() {
 host=crux.nu
 collection=ports/crux-3.6/core/
 destination=/usr/ports/core
+EOF
+
+	cat >> "$DIR/bootstrap/etc/ports/opt.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/opt/
+destination=/usr/ports/opt
 EOF
 
 	cat >> "$DIR/bootstrap/etc/pkgmk.conf" <<"EOF"
@@ -146,12 +140,10 @@ EOF
 	leave_chroot "$DIR/bootstrap"
 
 	mkdir -p "$PWD/cruxmedia/crux/core"
-	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec mv "{}" "$PWD/cruxmedia/crux/core" \;
+	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
 	mkdir -p "$PWD/cruxmedia/crux/opt"
-	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec mv "{}" "$PWD/cruxmedia/crux/opt" \;
-
-	tar -c -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports" .
+	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/opt" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$PWD/crux.iso"
 	rm -r -f "$PWD/cruxmedia"
@@ -165,14 +157,9 @@ stage2() {
 
 	mkdir "$PWD/cruxmedia"
 	mount "$PWD/crux.iso" "$PWD/cruxmedia"
-
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
-
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/opt" "fakeroot"
-
 	umount "$PWD/cruxmedia"
-	rmdir "$PWD/cruxmedia"
-	rm "$PWD/crux.iso"
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -180,6 +167,12 @@ stage2() {
 host=crux.nu
 collection=ports/crux-3.6/core/
 destination=/usr/ports/core
+EOF
+
+	cat >> "$DIR/bootstrap/etc/ports/opt.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/opt/
+destination=/usr/ports/opt
 EOF
 
 	cat >> "$DIR/bootstrap/etc/pkgmk.conf" <<"EOF"
@@ -198,8 +191,6 @@ runscripts yes
 
 makecommand      fakeroot -- pkgmk
 EOF
-
-	tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
 
 	enter_chroot "$DIR/bootstrap" <<"EOF"
 localedef -i "en_US" -f "UTF-8" "en_US.UTF-8"
@@ -227,12 +218,10 @@ EOF
 	leave_chroot "$DIR/bootstrap"
 
 	mkdir -p "$PWD/cruxmedia/crux/core"
-	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec mv "{}" "$PWD/cruxmedia/crux/core" \;
+	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
 	mkdir -p "$PWD/cruxmedia/crux/opt"
-	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec mv "{}" "$PWD/cruxmedia/crux/opt" \;
-
-	tar -c -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports" .
+	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/opt" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$PWD/crux.iso"
 	rm -r -f "$PWD/cruxmedia"
@@ -242,7 +231,90 @@ EOF
 # stage 3: finally build
 #
 stage3() {
-	return 0
+	DIR="$1"
+
+	mkdir "$PWD/cruxmedia"
+	mount "$PWD/crux.iso" "$PWD/cruxmedia"
+	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
+	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/opt" "fakeroot"
+	umount "$PWD/cruxmedia"
+
+	setup_chroot "$DIR/bootstrap"
+
+	cat >> "$DIR/bootstrap/etc/ports/core.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/core/
+destination=/usr/ports/core
+EOF
+
+	cat >> "$DIR/bootstrap/etc/ports/opt.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/opt/
+destination=/usr/ports/opt
+EOF
+
+	cat >> "$DIR/bootstrap/etc/ports/xorg.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/xorg/
+destination=/usr/ports/xorg
+EOF
+
+	cat >> "$DIR/bootstrap/etc/pkgmk.conf" <<"EOF"
+export JOBS=$(nproc)
+export MAKEFLAGS="-j $JOBS"
+
+PKGMK_COMPRESSION_MODE="xz"
+EOF
+
+	cat >> "$DIR/bootstrap/etc/prt-get.conf" <<"EOF"
+writelog enabled
+logmode  overwrite
+rmlog_on_success yes
+
+runscripts yes
+
+makecommand      fakeroot -- pkgmk
+EOF
+
+	cat >> "$DIR/bootstrap/packages.opt" <<"EOF"
+
+EOF
+
+	cat >> "$DIR/bootstrap/packages.xorg" <<"EOF"
+
+EOF
+
+	enter_chroot "$DIR/bootstrap" <<"EOF"
+localedef -i "en_US" -f "UTF-8" "en_US.UTF-8"
+
+export LANG="en_US.UTF-8"
+
+ports -u
+
+for pkg in /usr/ports/core/* $(cat /packages.opt) $(cat /packages.xorg); do
+	cd "$pkg" && fakeroot -- pkgmk -do
+done
+cd
+
+for pkg in /usr/ports/core/* $(cat /packages.opt) $(cat /packages.xorg); do
+	cd "$pkg" && fakeroot -- pkgmk -d
+done
+cd
+EOF
+
+	leave_chroot "$DIR/bootstrap"
+
+	mkdir -p "$PWD/cruxmedia/crux/core"
+	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
+
+	mkdir -p "$PWD/cruxmedia/crux/opt"
+	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/opt" \;
+
+	mkdir -p "$PWD/cruxmedia/crux/xorg"
+	find "$DIR/bootstrap/usr/ports/xorg" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/xorg" \;
+
+	mkbootisofs "$PWD/cruxmedia" --output "$PWD/crux.iso"
+	rm -r -f "$PWD/cruxmedia"
 }
 
 #
@@ -299,7 +371,7 @@ run_stage() {
 		"3") stage3 "$DIR" >$PWD/stage3.log 2>&1 ;;
 	esac
 
-	# grep "$DIR" "/proc/mounts" || rm -r -f "$DIR"
+	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
 
 	test -f "crux.iso" || echo "FATAL: stage $STAGE failed"
 }
