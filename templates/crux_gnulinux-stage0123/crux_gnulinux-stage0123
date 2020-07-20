@@ -296,10 +296,12 @@ for pkg in /usr/ports/core/* $(cat /packages.opt) $(cat /packages.xorg); do
 done
 cd
 
-for pkg in /usr/ports/core/* $(cat /packages.opt) $(cat /packages.xorg); do
+for pkg in /usr/ports/core/*; do
 	cd "$pkg" && fakeroot -- pkgmk -d
 done
 cd
+
+prt-get depinst $(cat /packages.opt) $(cat /packages.xorg)
 EOF
 
 	leave_chroot "$DIR/bootstrap"
