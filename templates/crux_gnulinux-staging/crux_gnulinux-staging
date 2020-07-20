@@ -1,9 +1,7 @@
 #! /usr/bin/env sh
 #
-# system requirements:
-#
-# 4GB RAM + 2GB SWAP
-# 20GB FREE SPACE
+# 8GB RAM + 2GB SWAP
+# 15GB free space
 #
 
 #
@@ -11,13 +9,19 @@
 #
 stage0() {
 	DIR="$1"
-	ISO="$2"
+	SRC="$2"
+	DST="$3"
 
 	mkdir "$PWD/cruxmedia"
-	mount "$ISO" "$PWD/cruxmedia"
+	mount "$SRC" "$PWD/cruxmedia"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
-	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/opt" "fakeroot"
+	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/opt"
+	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/xorg"
 	umount "$PWD/cruxmedia"
+
+	if test -f "$PWD/crux-sources.tar"; then
+		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
+	fi
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -34,38 +38,25 @@ export MAKEFLAGS="-j $JOBS"
 PKGMK_COMPRESSION_MODE="xz"
 EOF
 
-	cat >> "$DIR/bootstrap/etc/prt-get.conf" <<"EOF"
-writelog enabled
-logmode  overwrite
-rmlog_on_success yes
-
-runscripts yes
-
-makecommand      fakeroot -- pkgmk
-EOF
-
 	enter_chroot "$DIR/bootstrap" <<"EOF"
 localedef -i "en_US" -f "UTF-8" "en_US.UTF-8"
 
 export LANG="en_US.UTF-8"
 
-sed -i "s/prtdir \/usr\/ports\/opt/#prtdir \/usr\/ports\/opt/g" /etc/prt-get.conf
 mv "/etc/ports/opt.rsync" "/etc/ports/opt.rsync.inactive"
-
-sed -i "s/prtdir \/usr\/ports\/xorg/#prtdir \/usr\/ports\/xorg/g" /etc/prt-get.conf
 mv "/etc/ports/xorg.rsync" "/etc/ports/xorg.rsync.inactive"
 
 ports -u
 
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk -do
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk -do
 done
 cd
 
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk
 done
 cd
 EOF
@@ -75,18 +66,23 @@ EOF
 	mkdir -p "$PWD/cruxmedia/crux/core"
 	find "$DIR/bootstrap/usr/ports" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
-	mkbootisofs "$PWD/cruxmedia" --output "$PWD/stage0.iso"
+	mkbootisofs "$PWD/cruxmedia" --output "$DST"
 	rm -r -f "$PWD/cruxmedia"
 }
 
 stage1() {
 	DIR="$1"
-	ISO="$2"
+	SRC="$2"
+	DST="$3"
 
 	mkdir "$PWD/cruxmedia"
-	mount "$ISO" "$PWD/cruxmedia"
+	mount "$SRC" "$PWD/cruxmedia"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 	umount "$PWD/cruxmedia"
+
+	if test -f "$PWD/crux-sources.tar"; then
+		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
+	fi
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -114,34 +110,21 @@ localedef -i "en_US" -f "UTF-8" "en_US.UTF-8"
 
 export LANG="en_US.UTF-8"
 
-sed -i "s/prtdir \/usr\/ports\/xorg/#prtdir \/usr\/ports\/xorg/g" /etc/prt-get.conf
 mv "/etc/ports/xorg.rsync" "/etc/ports/xorg.rsync.inactive"
 
 ports -u
 
 prt-get install fakeroot
-EOF
 
-	cat >> "$DIR/bootstrap/etc/prt-get.conf" <<"EOF"
-writelog enabled
-logmode  overwrite
-rmlog_on_success yes
-
-runscripts yes
-
-makecommand      fakeroot -- pkgmk
-EOF
-
-	enter_chroot "$DIR/bootstrap" <<"EOF"
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk -do
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk -do
 done
 cd
 
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk
 done
 cd
 EOF
@@ -151,18 +134,23 @@ EOF
 	mkdir -p "$PWD/cruxmedia/crux/core"
 	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
-	mkbootisofs "$PWD/cruxmedia" --output "$PWD/stage1.iso"
+	mkbootisofs "$PWD/cruxmedia" --output "$DST"
 	rm -r -f "$PWD/cruxmedia"
 }
 
 stage2() {
 	DIR="$1"
-	ISO="$2"
+	SRC="$2"
+	DST="$3"
 
 	mkdir "$PWD/cruxmedia"
-	mount "$ISO" "$PWD/cruxmedia"
+	mount "$SRC" "$PWD/cruxmedia"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 	umount "$PWD/cruxmedia"
+
+	if test -f "$PWD/crux-sources.tar"; then
+		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
+	fi
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -190,34 +178,21 @@ localedef -i "en_US" -f "UTF-8" "en_US.UTF-8"
 
 export LANG="en_US.UTF-8"
 
-sed -i "s/prtdir \/usr\/ports\/xorg/#prtdir \/usr\/ports\/xorg/g" /etc/prt-get.conf
 mv "/etc/ports/xorg.rsync" "/etc/ports/xorg.rsync.inactive"
 
 ports -u
 
 prt-get install fakeroot
-EOF
 
-	cat >> "$DIR/bootstrap/etc/prt-get.conf" <<"EOF"
-writelog enabled
-logmode  overwrite
-rmlog_on_success yes
-
-runscripts yes
-
-makecommand      fakeroot -- pkgmk
-EOF
-
-	enter_chroot "$DIR/bootstrap" <<"EOF"
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk -do
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk -do
 done
 cd
 
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk
 done
 cd
 EOF
@@ -227,18 +202,27 @@ EOF
 	mkdir -p "$PWD/cruxmedia/crux/core"
 	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
-	mkbootisofs "$PWD/cruxmedia" --output "$PWD/stage2.iso"
+	mkbootisofs "$PWD/cruxmedia" --output "$DST"
 	rm -r -f "$PWD/cruxmedia"
 }
 
 stage3() {
 	DIR="$1"
-	ISO="$2"
+	SRC="$2"
+	DST="$3"
 
 	mkdir "$PWD/cruxmedia"
-	mount "$ISO" "$PWD/cruxmedia"
+	mount "$SRC" "$PWD/cruxmedia"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 	umount "$PWD/cruxmedia"
+
+	if test -f "$PWD/crux-sources.tar"; then
+		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
+	fi
+
+	cp "$(dirname $0)/packages.opt" "$DIR/bootstrap/packages.opt"
+
+	cp "$(dirname $0)/packages.xorg" "$DIR/bootstrap/packages.xorg"
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -278,41 +262,33 @@ prt-get install fakeroot
 EOF
 
 	cat >> "$DIR/bootstrap/etc/prt-get.conf" <<"EOF"
-writelog enabled
-logmode  overwrite
-rmlog_on_success yes
-
 runscripts yes
 
 makecommand      fakeroot -- pkgmk
 EOF
 
-	packages_opt >> "$DIR/bootstrap/packages.opt"
-
-	packages_xorg >> "$DIR/bootstrap/packages.xorg"
-
 	enter_chroot "$DIR/bootstrap" <<"EOF"
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk -do
+	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk -do
 done
 cd
 
 cd /usr/ports/opt
 for pkg in $(cat /packages.opt); do
-	cd "$pkg" && fakeroot -- pkgmk -do
+	cd "/usr/ports/opt/$pkg" && fakeroot -- pkgmk -do
 done
 cd
 
 cd /usr/ports/xorg
 for pkg in $(cat /packages.xorg); do
-	cd "$pkg" && fakeroot -- pkgmk -do
+	cd "/usr/ports/xorg/$pkg" && fakeroot -- pkgmk -do
 done
 cd
 
 cd /usr/ports/core
 for pkg in *; do
-	cd "$pkg" && prt-get update "$pkg"
+	cd "/usr/ports/core/$pkg" && prt-get update "$pkg"
 done
 cd
 
@@ -330,10 +306,7 @@ EOF
 	mkdir -p "$PWD/cruxmedia/crux/xorg"
 	find "$DIR/bootstrap/usr/ports/xorg" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/xorg" \;
 
-	mkbootisofs "$PWD/cruxmedia" --output "$PWD/stage3.iso"
-
-	rm "$PWD/staging.iso"
-
+	mkbootisofs "$PWD/cruxmedia" --output "$DST"
 	rm -r -f "$PWD/cruxmedia"
 }
 
@@ -379,223 +352,30 @@ run_stage() {
 	DIR="$(mktemp -d -p $PWD)"
 
 	case "$STAGE" in
-		"0") stage0 "$DIR" "$PWD/crux.iso" >$PWD/stage0.log 2>&1 ;;
-		"1") stage1 "$DIR" "$PWD/stage0.iso" >$PWD/stage1.log 2>&1 ;;
-		"2") stage2 "$DIR" "$PWD/stage1.iso" >$PWD/stage2.log 2>&1 ;;
-		"3") stage3 "$DIR" "$PWD/stage2.iso" >$PWD/stage3.log 2>&1 ;;
+		"0") stage0 "$DIR" "$PWD/master.iso" "$PWD/stage0.iso" >$PWD/stage0.log 2>&1 ;;
+		"1") stage1 "$DIR" "$PWD/stage0.iso" "$PWD/stage1.iso" >$PWD/stage1.log 2>&1 ;;
+		"2") stage2 "$DIR" "$PWD/stage1.iso" "$PWD/stage2.iso" >$PWD/stage2.log 2>&1 ;;
+		"3") stage3 "$DIR" "$PWD/stage2.iso" "$PWD/stage3.iso" >$PWD/stage3.log 2>&1 ;;
 	esac
 
 	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
 }
 
 main() {
-	test -f "$PWD/crux.iso" || wget -T 5 -O "$PWD/crux.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso" || return 1
+	STAGE="$1"
 
-	for stage in 0 1 2 3; do
-		run_stage "$stage"
+	test -f "$PWD/master.iso" || wget -q -T 5 -O "$PWD/master.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso" || return 1
+	
+	case "$STAGE" in
+		[0-3])
+			run_stage "$STAGE"
+			return 0
+			;;
+	esac
+
+	for STAGE in 0 1 2 3; do
+		run_stage "$STAGE"
 	done
-}
-
-#
-# packages to include in stage3
-#
-packages_opt() {
-	cat <<"EOF"
-alsa-lib
-at-spi2-atk
-at-spi2-core
-atk
-bin86
-btrfs-progs
-cairo
-cdrkit
-cmake
-cryptsetup
-dbus
-dbus-glib
-dialog
-dosfstools
-efibootmgr
-efivar
-fakeroot
-fetchmail
-firefox-bin
-fontconfig
-freetype
-fribidi
-gdk-pixbuf
-glib
-gnu-efi
-gobject-introspection
-grub2
-grub2-efi
-gtk
-gtk3
-harfbuzz
-hicolor-icon-theme
-intltool
-iputils
-jfsutils
-json-c
-keyutils
-libaio
-libevent
-libgcrypt
-libgpg-error
-libidl
-libjpeg-turbo
-libnl
-libpng
-libtiff
-libxml2
-libxslt
-lilo
-linux-firmware
-llvm
-lvm2
-mdadm
-meson
-mtools
-mutt
-nano
-nfs-utils
-ninja
-openbox
-p5-xml-parser
-pango
-parted
-popt
-ppp
-prt-utils
-python
-python3-libxml2
-python3-setuptools
-python3-mako
-python3-markupsafe
-reiserfsprogs
-rpcbind
-shared-mime-info
-syslinux
-talloc
-unzip
-wireless-tools
-wpa_supplicant
-xfsprogs
-xterm
-yasm
-zip
-EOF
-}
-
-packages_xorg() {
-	cat <<"EOF"
-glu
-libdrm
-libepoxy
-libglvnd
-libinput
-libpthread-stubs
-libvdpau
-mesa3d
-mtdev
-xkeyboard-config
-xorg
-xorg-bdftopcf
-xorg-font-alias
-xorg-font-bitstream-vera
-xorg-font-misc-misc
-xorg-font-util
-xorg-iceauth
-xorg-libdmx
-xorg-libevdev
-xorg-libfontenc
-xorg-libice
-xorg-libpciaccess
-xorg-libpixman
-xorg-libsm
-xorg-libx11
-xorg-libxau
-xorg-libxaw
-xorg-libxcb
-xorg-libxcomposite
-xorg-libxcursor
-xorg-libxdamage
-xorg-libxdmcp
-xorg-libxext
-xorg-libxfixes
-xorg-libxfont
-xorg-libxfont2
-xorg-libxft
-xorg-libxi
-xorg-libxinerama
-xorg-libxkbfile
-xorg-libxkbui
-xorg-libxmu
-xorg-libxpm
-xorg-libxrandr
-xorg-libxrender
-xorg-libxres
-xorg-libxscrnsaver
-xorg-libxshmfence
-xorg-libxt
-xorg-libxtst
-xorg-libxv
-xorg-libxvmc
-xorg-libxxf86dga
-xorg-libxxf86misc
-xorg-libxxf86vm
-xorg-makedepend
-xorg-mkfontscale
-xorg-rendercheck
-xorg-rgb
-xorg-server
-xorg-sessreg
-xorg-setxkbmap
-xorg-util-macros
-xorg-x11perf
-xorg-xauth
-xorg-xbacklight
-xorg-xbitmaps
-xorg-xcb-proto
-xorg-xcb-util
-xorg-xcb-util-wm
-xorg-xcb-util-renderutil
-xorg-xcb-util-keysyms
-xorg-xcb-util-image
-xorg-xcompmgr
-xorg-xdpyinfo
-xorg-xdriinfo
-xorg-xev
-xorg-xf86-input-evdev
-xorg-xf86-input-keyboard
-xorg-xf86-input-libinput
-xorg-xf86-input-mouse
-xorg-xf86-input-synaptics
-xorg-xf86-video-ati
-xorg-xf86-video-dummy
-xorg-xf86-video-intel
-xorg-xf86-video-neomagic
-xorg-xf86-video-nouveau
-xorg-xf86-video-tga
-xorg-xf86-video-vesa
-xorg-xfontsel
-xorg-xgamma
-xorg-xhost
-xorg-xinit
-xorg-xkbcomp
-xorg-xkill
-xorg-xlsfonts
-xorg-xmodmap
-xorg-xorgproto
-xorg-xprop
-xorg-xrandr
-xorg-xrdb
-xorg-xset
-xorg-xsetroot
-xorg-xtrans
-xorg-xvinfo
-xorg-xwininfo
-EOF
 }
 
 main "$@"

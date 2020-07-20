@@ -7,7 +7,7 @@ crux_gnulinux() {
 											\
 		--ports "$PWD/cruxports"						\
 											\
-		"linux"
+		"htop"		"kexec-tools"	"linux"
 
 	echo "#! /sbin/init" > "$DIR/initramfs/init"
 	chmod +x "$DIR/initramfs/init"
@@ -20,12 +20,31 @@ crux_gnulinux() {
 	sed -i "s/SERVICES.*/SERVICES=(lo net crond sshd)/g" "$DIR/initramfs/etc/rc.conf"
 
 	exportroot "$DIR/initramfs" > "$PWD/crux_gnulinux-initrd.rootfs"
+
+	mkinitramfs "$DIR/initramfs"							\
+											\
+		--standalone								\
+											\
+		--output "$DIR/initramfs.img"
+
+	xz --check="crc32" --keep --threads=0 "$DIR/initramfs.img"
+
+	install -D "$DIR/initramfs/lib/modules/"*"/vmlinuz" "$DIR/bootimage/boot/vmlinuz"
+	install -D "$DIR/initramfs.img.xz" "$DIR/bootimage/boot/initrd"
+
+	mkbootisofs "$DIR/bootimage"							\
+											\
+		--legacy-boot "grub2"							\
+											\
+		--efi "grub2"								\
+											\
+		--output "$DIR/install.iso"
 }
 
 main() {
 	DIR="$(mktemp -d -p $PWD)"
 
-	for dir in initramfs; do
+	for dir in initramfs bootimage; do
 		mkdir "$DIR/$dir"
 	done
 

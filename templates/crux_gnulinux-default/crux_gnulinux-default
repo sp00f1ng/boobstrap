@@ -13,14 +13,16 @@ crux_gnulinux() {
 											\
 		--output "$DIR/initramfs.img"
 
-	xz --check="crc32" --keep --threads=0 --best "$DIR/initramfs.img"
+	xz --check="crc32" --keep --threads=0 "$DIR/initramfs.img"
 
 	install -D "$DIR/bootstrap/lib/modules/"*"/vmlinuz" "$DIR/bootimage/boot/vmlinuz"
 	install -D "$DIR/initramfs.img.xz" "$DIR/bootimage/boot/initrd"
 
 	mkbootisofs "$DIR/bootimage"							\
 											\
-		--legacy-boot "grub2" --efi "grub2"					\
+		--legacy-boot "grub2"							\
+											\
+		--efi "grub2"								\
 											\
 		--overlay "$DIR/bootstrap"						\
 											\

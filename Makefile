@@ -3,7 +3,7 @@ BINDIR = /usr/bin
 ETCDIR = /etc
 SHAREDIR = /usr/share
 
-VERSION = 1.2
+VERSION = 1.4
 NAME = booty
 
 # Packages directory
@@ -22,12 +22,11 @@ booty: booty.in
 install: all
 	install -D -m 0755 booty.in $(DESTDIR)$(BINDIR)/booty
 	install -D -m 0644 booty.conf $(DESTDIR)$(ETCDIR)/booty/booty.conf
-	install -D -m 0644 booty-init.in $(DESTDIR)$(ETCDIR)/booty/init
+	install -D -m 0644 booty-init.in $(DESTDIR)$(SHAREDIR)/booty/init
 	install -D -m 0644 loader-grub.conf $(DESTDIR)$(SHAREDIR)/booty/grub/grub.cfg
 	install -D -m 0644 loader-syslinux.conf $(DESTDIR)$(SHAREDIR)/booty/syslinux/syslinux.cfg
-	install -D -m 0644 firmware.bin $(DESTDIR)$(SHAREDIR)/booty/firmware.bin
 	for tpl in templates/*/*; \
-		do install -D -m 0644 $$tpl $(DESTDIR)$(SHAREDIR)/booty/$$tpl; \
+		do install -D -m 0755 $$tpl $(DESTDIR)$(SHAREDIR)/booty/$$tpl; \
 	done
 	ln -sf booty $(DESTDIR)$(BINDIR)/mkbootstrap
 	ln -sf booty $(DESTDIR)$(BINDIR)/mkinitramfs
