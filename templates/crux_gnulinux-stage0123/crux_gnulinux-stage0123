@@ -287,7 +287,120 @@ runscripts yes
 makecommand      fakeroot -- pkgmk
 EOF
 
-	cat >> "$DIR/bootstrap/packages.opt" <<"EOF"
+	packages_opt >> "$DIR/bootstrap/packages.opt"
+
+	packages_xorg >> "$DIR/bootstrap/packages.xorg"
+
+	enter_chroot "$DIR/bootstrap" <<"EOF"
+cd /usr/ports/core
+for pkg in *; do
+	cd "$pkg" && fakeroot -- pkgmk -do
+done
+cd
+
+cd /usr/ports/opt
+for pkg in $(cat /packages.opt); do
+	cd "$pkg" && fakeroot -- pkgmk -do
+done
+cd
+
+cd /usr/ports/xorg
+for pkg in $(cat /packages.xorg); do
+	cd "$pkg" && fakeroot -- pkgmk -do
+done
+cd
+
+cd /usr/ports/core
+for pkg in *; do
+	cd "$pkg" && prt-get update "$pkg"
+done
+cd
+
+prt-get depinst $(cat /packages.opt) $(cat /packages.xorg)
+EOF
+
+	leave_chroot "$DIR/bootstrap"
+
+	mkdir -p "$PWD/cruxmedia/crux/core"
+	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
+
+	mkdir -p "$PWD/cruxmedia/crux/opt"
+	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/opt" \;
+
+	mkdir -p "$PWD/cruxmedia/crux/xorg"
+	find "$DIR/bootstrap/usr/ports/xorg" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/xorg" \;
+
+	mkbootisofs "$PWD/cruxmedia" --output "$PWD/stage3.iso"
+
+	rm "$PWD/staging.iso"
+
+	rm -r -f "$PWD/cruxmedia"
+}
+
+#
+# chroot
+#
+setup_chroot() {
+	ROOT="$1"
+
+	mount -B "/dev" "$ROOT/dev"
+	mount -B "/tmp" "$ROOT/tmp"
+	mount -B "/run" "$ROOT/run"
+	mount -t proc proc "$ROOT/proc"
+	mount -t sysfs none "$ROOT/sys"
+	mount -t devpts -o noexec,nosuid,gid=tty,mode=0620 devpts "$ROOT/dev/pts"
+
+	if grep -qs "/sys/firmware/efi/efivars" "/proc/mounts"; then
+		mount -B "/sys/firmware/efi/efivars" "$ROOT/sys/firmware/efi/efivars"
+	fi
+
+	cp "/etc/resolv.conf" "$ROOT/etc/resolv.conf"
+}
+
+enter_chroot() {
+	ROOT="$1"
+
+	chroot "$ROOT" /usr/bin/env PS1="(chroot) $PS1" /bin/bash
+}
+
+leave_chroot() {
+	ROOT="$1"
+
+	for mount in $(grep "$ROOT" "/proc/mounts" | awk '{print $2}'); do
+		umount -R "$mount" 2>/dev/null
+	done
+}
+
+#
+# main
+#
+run_stage() {
+	STAGE="$1"
+	DIR="$(mktemp -d -p $PWD)"
+
+	case "$STAGE" in
+		"0") stage0 "$DIR" "$PWD/crux.iso" >$PWD/stage0.log 2>&1 ;;
+		"1") stage1 "$DIR" "$PWD/stage0.iso" >$PWD/stage1.log 2>&1 ;;
+		"2") stage2 "$DIR" "$PWD/stage1.iso" >$PWD/stage2.log 2>&1 ;;
+		"3") stage3 "$DIR" "$PWD/stage2.iso" >$PWD/stage3.log 2>&1 ;;
+	esac
+
+	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
+}
+
+main() {
+	test -f "$PWD/crux.iso" || wget -T 5 -O "$PWD/crux.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso" || return 1
+
+	for stage in 0 1 2 3; do
+		run_stage "$stage"
+	done
+}
+
+#
+# packages to include in stage3
+#
+packages_opt() {
+	cat <<"EOF"
 alsa-lib
 at-spi2-atk
 at-spi2-core
@@ -355,6 +468,7 @@ popt
 ppp
 prt-utils
 python
+python3-libxml2
 python3-setuptools
 python3-mako
 python3-markupsafe
@@ -371,8 +485,10 @@ xterm
 yasm
 zip
 EOF
+}
 
-	cat >> "$DIR/bootstrap/packages.xorg" <<"EOF"
+packages_xorg() {
+	cat <<"EOF"
 glu
 libdrm
 libepoxy
@@ -480,110 +596,6 @@ xorg-xtrans
 xorg-xvinfo
 xorg-xwininfo
 EOF
-
-	enter_chroot "$DIR/bootstrap" <<"EOF"
-cd /usr/ports/core
-for pkg in *; do
-	cd "$pkg" && fakeroot -- pkgmk -do
-done
-cd
-
-cd /usr/ports/opt
-for pkg in $(cat /packages.opt); do
-	cd "$pkg" && fakeroot -- pkgmk -do
-done
-cd
-
-cd /usr/ports/xorg
-for pkg in $(cat /packages.xorg); do
-	cd "$pkg" && fakeroot -- pkgmk -do
-done
-cd
-
-cd /usr/ports/core
-for pkg in *; do
-	cd "$pkg" && prt-get update "$pkg"
-done
-cd
-
-prt-get depinst $(cat /packages.opt) $(cat /packages.xorg)
-EOF
-
-	leave_chroot "$DIR/bootstrap"
-
-	mkdir -p "$PWD/cruxmedia/crux/core"
-	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
-
-	mkdir -p "$PWD/cruxmedia/crux/opt"
-	find "$DIR/bootstrap/usr/ports/opt" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/opt" \;
-
-	mkdir -p "$PWD/cruxmedia/crux/xorg"
-	find "$DIR/bootstrap/usr/ports/xorg" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/xorg" \;
-
-	mkbootisofs "$PWD/cruxmedia" --output "$PWD/stage3.iso"
-
-	rm "$PWD/staging.iso"
-
-	rm -r -f "$PWD/cruxmedia"
-}
-
-#
-# chroot
-#
-setup_chroot() {
-	ROOT="$1"
-
-	mount -B "/dev" "$ROOT/dev"
-	mount -B "/tmp" "$ROOT/tmp"
-	mount -B "/run" "$ROOT/run"
-	mount -t proc proc "$ROOT/proc"
-	mount -t sysfs none "$ROOT/sys"
-	mount -t devpts -o noexec,nosuid,gid=tty,mode=0620 devpts "$ROOT/dev/pts"
-
-	if grep -qs "/sys/firmware/efi/efivars" "/proc/mounts"; then
-		mount -B "/sys/firmware/efi/efivars" "$ROOT/sys/firmware/efi/efivars"
-	fi
-
-	cp "/etc/resolv.conf" "$ROOT/etc/resolv.conf"
-}
-
-enter_chroot() {
-	ROOT="$1"
-
-	chroot "$ROOT" /usr/bin/env PS1="(chroot) $PS1" /bin/bash
-}
-
-leave_chroot() {
-	ROOT="$1"
-
-	for mount in $(grep "$ROOT" "/proc/mounts" | awk '{print $2}'); do
-		umount -R "$mount" 2>/dev/null
-	done
-}
-
-#
-# main
-#
-run_stage() {
-	STAGE="$1"
-	DIR="$(mktemp -d -p $PWD)"
-
-	case "$STAGE" in
-		"0") stage0 "$DIR" "$PWD/crux.iso" >$PWD/stage0.log 2>&1 ;;
-		"1") stage1 "$DIR" "$PWD/stage0.iso" >$PWD/stage1.log 2>&1 ;;
-		"2") stage2 "$DIR" "$PWD/stage1.iso" >$PWD/stage2.log 2>&1 ;;
-		"3") stage3 "$DIR" "$PWD/stage2.iso" >$PWD/stage3.log 2>&1 ;;
-	esac
-
-	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
-}
-
-main() {
-	test -f "$PWD/crux.iso" || wget -T 5 -O "$PWD/crux.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso" || return 1
-
-	for stage in 0 1 2 3; do
-		run_stage "$stage"
-	done
 }
 
 main "$@"
