@@ -1,7 +1,7 @@
 #! /usr/bin/env sh
 #
 # 8GB RAM + 2GB SWAP
-# 15GB free space
+# 16GB free space
 #
 
 #
@@ -18,10 +18,6 @@ stage0() {
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/opt"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/xorg"
 	umount "$PWD/cruxmedia"
-
-	if test -f "$PWD/crux-sources.tar"; then
-		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
-	fi
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -79,10 +75,6 @@ stage1() {
 	mount "$SRC" "$PWD/cruxmedia"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 	umount "$PWD/cruxmedia"
-
-	if test -f "$PWD/crux-sources.tar"; then
-		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
-	fi
 
 	setup_chroot "$DIR/bootstrap"
 
@@ -148,10 +140,6 @@ stage2() {
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 	umount "$PWD/cruxmedia"
 
-	if test -f "$PWD/crux-sources.tar"; then
-		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
-	fi
-
 	setup_chroot "$DIR/bootstrap"
 
 	cat >> "$DIR/bootstrap/etc/ports/core.rsync" <<"EOF"
@@ -215,10 +203,6 @@ stage3() {
 	mount "$SRC" "$PWD/cruxmedia"
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" --ports "$PWD/cruxmedia/crux/core"
 	umount "$PWD/cruxmedia"
-
-	if test -f "$PWD/crux-sources.tar"; then
-		tar -x -f "$PWD/crux-sources.tar" -C "$DIR/bootstrap/usr/ports"
-	fi
 
 	cp "$(dirname $0)/packages.opt" "$DIR/bootstrap/packages.opt"
 
@@ -358,20 +342,15 @@ run_stage() {
 		"3") stage3 "$DIR" "$PWD/stage2.iso" "$PWD/stage3.iso" >$PWD/stage3.log 2>&1 ;;
 	esac
 
-	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
+	grep -qs "$DIR" "/proc/mounts" || rm -r -f "$DIR"
+
+	grep -qs "^=======> ERROR:" "$PWD/stage$STAGE.log" && exit 1
 }
 
 main() {
 	STAGE="$1"
 
 	test -f "$PWD/master.iso" || wget -q -T 5 -O "$PWD/master.iso" "http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso" || return 1
-	
-	case "$STAGE" in
-		[0-3])
-			run_stage "$STAGE"
-			return 0
-			;;
-	esac
 
 	for STAGE in 0 1 2 3; do
 		run_stage "$STAGE"
