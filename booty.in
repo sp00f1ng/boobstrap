@@ -324,9 +324,8 @@ exit 0
 		fi
 	done
 	for dir in "/usr/lib/grub" "/lib/grub" "$GRUB_PATH"; do
-		if test -f "$dir/i386-pc/cdboot.img"; then
+		if test -d "$dir/i386-pc"; then
 			GRUB_PATH="$dir"
-			GRUB_BIOS_CDBOOT="$dir/i386-pc/cdboot.img"
 		fi
 	done
 	case "$LOADER_LEGACY_BOOT" in
@@ -423,17 +422,18 @@ exit 0
 		if test "$LOADER_LEGACY_BOOT" = "GRUB2"; then
 			ISO_9660_LEGACY_BOOT="-b boot/grub/bios.img -no-emul-boot -boot-load-size 4 -boot-info-table"
 			mkdir -p "$DIR/boot/grub"
-			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
-			grub-mkstandalone \
+			mkdir -p "$DIR/boot/grub/i386-pc"
+			cp -a "$GRUB_PATH/i386-pc/"*".mod" "$DIR/boot/grub/i386-pc"
+			cp -a "$GRUB_PATH/i386-pc/"*".lst" "$DIR/boot/grub/i386-pc"
+			echo 'search --file --no-floppy --set root /boot/vmlinuz' > "$DIR/boot/grub/grub.cfg"
+			grub-mkimage \
+				--config="$DIR/boot/grub/grub.cfg" \
+				--output="$DIR/boot/grub/core.img" \
 				--format="i386-pc" \
-				--output="$DIR/boot/grub/grub.raw" \
-				--install-modules="linux16 linux normal iso9660 biosdisk memdisk test search" \
-				--modules="linux16 linux normal iso9660 biosdisk memdisk test search" \
-				--locales="" \
-				--fonts="" \
-				--themes="" \
-				"/boot/grub/grub.cfg=$DIR/boot/grub/grub.cfg"
-			cat "$GRUB_BIOS_CDBOOT" "$DIR/boot/grub/grub.raw" > $DIR/boot/grub/bios.img
+				--prefix="/boot/grub" \
+				biosdisk iso9660 normal search search_fs_file part_msdos part_gpt fat
+			cat "$GRUB_PATH/i386-pc/cdboot.img" "$DIR/boot/grub/core.img" > $DIR/boot/grub/bios.img
+			cp -r "/usr/share/booty/grub" "$DIR/boot"
 		fi
 		if test "$LOADER_EFI" = "GRUB2"; then
 			ISO_9660_EFI="-eltorito-alt-boot -e efi/boot/floppy.img -no-emul-boot"
@@ -451,25 +451,26 @@ exit 0
 				--output="$DIR/efi/boot/bootx64.efi" \
 				--format="x86_64-efi" \
 				--prefix="/boot/grub" \
-				iso9660 part_msdos part_gpt fat normal search search_fs_file
+				iso9660 normal search search_fs_file part_msdos part_gpt fat
 			grub-mkimage \
 				--config="$DIR/boot/grub/grub.cfg" \
 				--output="$DIR/efi/boot/bootia32.efi" \
 				--format="i386-efi" \
 				--prefix="/boot/grub" \
-				iso9660 part_msdos part_gpt fat normal search search_fs_file
+				iso9660 normal search search_fs_file part_msdos part_gpt fat
 			mkdosfs -C -n "MS-DOS" "$DIR/efi/boot/floppy.img" 1440 1>/dev/null
 			mount -o loop "$DIR/efi/boot/floppy.img" "$DIR/boot"
 			mkdir -p "$DIR/boot/efi/boot"
 			cp "$DIR/efi/boot/bootx64.efi" "$DIR/boot/efi/boot"
 			cp "$DIR/efi/boot/bootia32.efi" "$DIR/boot/efi/boot"
 			umount "$DIR/boot"
-			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
+			cp -r "/usr/share/booty/grub" "$DIR/boot"
 		fi
 		if test "$ISO_9660_RUN" = "genisoimage"; then
 			echo "Creating iso image using genisoimage" | msg -2 --foreground "Light Blue"
 			hi
 			genisoimage -v -J -r -V "$ISO_9660_LABEL" -A "$ISO_9660_LABEL" \
+				-input-charset "utf-8" \
 				$ISO_9660_LEGACY_BOOT \
 				$ISO_9660_EFI \
 				-o "$ISO" "$DIR" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"

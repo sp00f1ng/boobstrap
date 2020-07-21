@@ -63,6 +63,9 @@ EOF
 	find "$DIR/bootstrap/usr/ports" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$DST"
+	cd "$PWD/cruxmedia"
+	find * > $DST.txt
+	cd "$OLDPWD"
 	rm -r -f "$PWD/cruxmedia"
 }
 
@@ -127,6 +130,9 @@ EOF
 	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$DST"
+	cd "$PWD/cruxmedia"
+	find * > $DST.txt
+	cd "$OLDPWD"
 	rm -r -f "$PWD/cruxmedia"
 }
 
@@ -191,6 +197,9 @@ EOF
 	find "$DIR/bootstrap/usr/ports/core" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/core" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$DST"
+	cd "$PWD/cruxmedia"
+	find * > $DST.txt
+	cd "$OLDPWD"
 	rm -r -f "$PWD/cruxmedia"
 }
 
@@ -291,6 +300,9 @@ EOF
 	find "$DIR/bootstrap/usr/ports/xorg" -name "*.pkg.tar.xz" -exec cp "{}" "$PWD/cruxmedia/crux/xorg" \;
 
 	mkbootisofs "$PWD/cruxmedia" --output "$DST"
+	cd "$PWD/cruxmedia"
+	find * > $DST.txt
+	cd "$OLDPWD"
 	rm -r -f "$PWD/cruxmedia"
 }
 

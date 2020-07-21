@@ -15,7 +15,7 @@ crux_gnulinux() {
 
 	xz --check="crc32" --keep --threads=0 "$DIR/initramfs.img"
 
-	install -D "$DIR/bootstrap/lib/modules/"*"/vmlinuz" "$DIR/bootimage/boot/vmlinuz"
+	install -D "$DIR/bootstrap/boot/vmlinuz-"* "$DIR/bootimage/boot/vmlinuz"
 	install -D "$DIR/initramfs.img.xz" "$DIR/bootimage/boot/initrd"
 
 	mkbootisofs "$DIR/bootimage"							\
