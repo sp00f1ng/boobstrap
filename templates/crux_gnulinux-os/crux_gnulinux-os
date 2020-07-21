@@ -44,9 +44,12 @@ kernel_release() {
 
 	make -j$(nproc)
 
-	cd `welldone`
+	install -D -m 0644 "arch/x86/boot/bzImage" "$KERNEL_NAME-$KERNEL_VERSION/boot/vmlinuz-$KERNEL_VERSION"
+	make INSTALL_MOD_PATH="$KERNEL_NAME-$KERNEL_VERSION" modules_install
 
-	tar -c -v -J -f "$KERNEL_PACKAGE" .
+	tar -c -v -J -f "$KERNEL_PACKAGE" -C "$KERNEL_NAME-$KERNEL_VERSION" .
+
+	cd $OLDPWD
 }
 
 os_release() {
@@ -85,10 +88,7 @@ os_release() {
 	echo "#! /sbin/init" > "$DIRECTORY/initramfs/init"
 	chmod +x "$DIRECTORY/initramfs/init"
 
-	#
 	# remote installation via ssh
-	# keep your *.pub keys in ~/.ssh while building
-	#
 	SERVICE_SSHD_IS="disabled"
 	AUTHORIZED_KEYS="$DIRECTORY/initramfs/root/.ssh/authorized_keys"
 
@@ -101,15 +101,14 @@ os_release() {
 		SERVICE_SSHD_IS="enabled"
 		sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$DIRECTORY/initramfs/etc/rc.conf"
 	fi
-	#
-	#
-	#
+	# /sshd
 
 	cat >> "$DIRECTORY/initramfs/etc/rc.local" <<"EOF"
 cat /root/issue
 EOF
 
 	cat >> "$DIRECTORY/initramfs/root/issue" <<EOF
+
 Welcome to the CRUX GNU/Linux
 
 Login: root
@@ -121,7 +120,6 @@ Installation notes:
 
 Cheers,
 CRUX Team & Spoofing
-
 EOF
 
 	cat >> "$DIRECTORY/initramfs/root/howto" <<"EOF"
@@ -132,7 +130,7 @@ EOF
 # mkdir -p /mnt/var/lib/pkg
 # touch /mnt/var/lib/pkg/db
 
-# mount /dev/sdb1 /tmp
+# mount /dev/sr0 /tmp
 # for port in /tmp/crux/*/* ; do pkgadd -r /mnt $port ; done
 # umount /tmp
 
@@ -174,7 +172,7 @@ EOF
 
 	mkbootisofs "$DIRECTORY/bootimage"						\
 											\
-		--legacy-boot "grub2"							\
+		--legacy-boot "syslinux"						\
 											\
 		--efi "grub2"								\
 											\

@@ -487,6 +487,13 @@ exit 0
 			CODE="$?"
 			lo
 		fi
+		if test "$LOADER_LEGACY_BOOT" = "SYSLINUX"; then
+			if test "$ISO_9660_EFI"; then
+				isohybrid --uefi "$ISO"
+			else
+				isohybrid "$ISO"
+			fi
+		fi
 		if test "$CODE"; then
 			case "$CODE" in
 				"0") echo "Success" | msg -2 --foreground "Light Green" ;;

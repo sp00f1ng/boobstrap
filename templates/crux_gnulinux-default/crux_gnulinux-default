@@ -20,7 +20,7 @@ crux_gnulinux() {
 
 	mkbootisofs "$DIR/bootimage"							\
 											\
-		--legacy-boot "grub2"							\
+		--legacy-boot "syslinux"						\
 											\
 		--efi "grub2"								\
 											\
