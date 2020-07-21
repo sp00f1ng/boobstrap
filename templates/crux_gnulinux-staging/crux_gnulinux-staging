@@ -52,7 +52,12 @@ cd
 
 cd /usr/ports/core
 for pkg in *; do
-	cd "/usr/ports/core/$pkg" && fakeroot -- pkgmk
+	if cd "/usr/ports/core/$pkg"; then
+		if test -x "/usr/ports/core/$pkg/pre-install"; then
+			/usr/ports/core/$pkg/pre-install
+		fi
+		fakeroot -- pkgmk
+	fi
 done
 cd
 EOF
