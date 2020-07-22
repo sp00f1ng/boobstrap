@@ -141,6 +141,9 @@ exit 0
 			esac
 		done
 		lo
+		#
+		# TODO replace it with mknod
+		#
 		echo "Copying devices" | msg -2
 		hi
 		for dev in "console" "tty" "tty1" "null"; do
@@ -445,7 +448,7 @@ exit 0
 			cp -a "$GRUB_PATH/x86_64-efi/"*".lst" "$DIR/boot/grub/x86_64-efi"
 			cp -a "$GRUB_PATH/i386-efi/"*".mod" "$DIR/boot/grub/i386-efi"
 			cp -a "$GRUB_PATH/i386-efi/"*".lst" "$DIR/boot/grub/i386-efi"
-			echo 'search --file --no-floppy --set root /efi/boot/floppy.img' > "$DIR/boot/grub/grub.cfg"
+			echo 'search --file --no-floppy --set root /boot/vmlinuz' > "$DIR/boot/grub/grub.cfg"
 			grub-mkimage \
 				--config="$DIR/boot/grub/grub.cfg" \
 				--output="$DIR/efi/boot/bootx64.efi" \
