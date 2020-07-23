@@ -5,7 +5,7 @@ libglvnd
 libinput
 libpthread-stubs
 libvdpau
-mesa3d
+mesa
 mtdev
 xkeyboard-config
 xorg
