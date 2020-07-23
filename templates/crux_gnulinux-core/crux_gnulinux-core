@@ -1,9 +1,18 @@
 #! /usr/bin/env sh
 
 crux_gnulinux() {
-	mkbootstrap "crux_gnulinux" "$DIR/bootstrap"					\
-											\
-		--ports-dir "$PWD/cruxmedia/crux/core"
+	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" "$PWD/cruxmedia/crux/core/"*
+
+	install -d -m 0700 "$DIR/bootstrap/root/.ssh"
+
+	if cd "$HOME/.ssh"; then
+		for key in *".pub"; do
+			cat "$key" >> "$DIR/bootstrap/root/.ssh/authorized_keys"
+		done
+		cd "$OLDPWD"
+	fi
+
+	sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$DIR/bootstrap/etc/rc.conf"
 
 	exportroot "$DIR/bootstrap" > "$PWD/crux_gnulinux-core.rootfs"
 }
@@ -11,8 +20,8 @@ crux_gnulinux() {
 main() {
 	DIR="$(mktemp -d -p $PWD)"
 
-	for dir in bootstrap; do
-		mkdir "$DIR/$dir" 2>/dev/null
+	for dir in bootstrap initramfs bootimage; do
+		mkdir "$DIR/$dir"
 	done
 
 	crux_gnulinux "$@"

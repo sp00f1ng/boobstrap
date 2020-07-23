@@ -5,11 +5,15 @@ crux_gnulinux() {
 
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap"					\
 											\
-		--ports "$PWD/cruxports"						\
+		--ports "$PWD/spoofie-home-server/packages"				\
 											\
-		"linux"
+		"htop"		"kexec-tools"	"linux"		"qemu"
 
 	mkinitramfs "$DIR/initramfs"							\
+											\
+		--overlay "$DIR/bootstrap"						\
+											\
+		--squashfs								\
 											\
 		--output "$DIR/initramfs.img"
 
@@ -18,17 +22,7 @@ crux_gnulinux() {
 	install -D "$DIR/bootstrap/boot/vmlinuz-"* "$DIR/bootimage/boot/vmlinuz"
 	install -D "$DIR/initramfs.img.xz" "$DIR/bootimage/boot/initrd"
 
-	mkbootisofs "$DIR/bootimage"							\
-											\
-		--legacy-boot "syslinux"						\
-											\
-		--efi "grub2"								\
-											\
-		--overlay "$DIR/bootstrap"						\
-											\
-		--cpio									\
-											\
-		--output "$DIR/install.iso"
+	mkbootisofs "$DIR/bootimage" --output "$PWD/$(basename $0).iso"
 }
 
 main() {
