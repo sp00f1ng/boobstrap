@@ -1,9 +1,7 @@
-#! /usr/bin/env sh
-
-crux_gnulinux() {
+build() {
 	mkbootstrap "crux_gnulinux" "$DIR/bootstrap"					\
 											\
-		--ports "$PWD/cruxmedia/crux/core"					\
+		--ports "/root/cruxmedia/crux/core"					\
 											\
 		"acl"			"iana-etc"		"procps"		\
 		"attr"			"inetutils"		"psmisc"		\
@@ -35,17 +33,5 @@ crux_gnulinux() {
 
 	sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$DIR/bootstrap/etc/rc.conf"
 
-	exportroot "$DIR/bootstrap" > "$PWD/crux_gnulinux-embedded.rootfs"
+	exportroot "$DIR/bootstrap" > "$PWD/rootfs.img"
 }
-
-main() {
-	DIR="$(mktemp -d -p $PWD)"
-
-	for dir in bootstrap; do
-		mkdir "$DIR/$dir" 2>/dev/null
-	done
-
-	crux_gnulinux "$@"
-}
-
-main "$@"

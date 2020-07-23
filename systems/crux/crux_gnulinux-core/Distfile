@@ -1,0 +1,16 @@
+build() {
+	mkbootstrap "crux_gnulinux" "$DIR/bootstrap" "/root/cruxmedia/crux/core/"*
+
+	install -d -m 0700 "$DIR/bootstrap/root/.ssh"
+
+	if cd "$HOME/.ssh"; then
+		for key in *".pub"; do
+			cat "$key" >> "$DIR/bootstrap/root/.ssh/authorized_keys"
+		done
+		cd "$OLDPWD"
+	fi
+
+	sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$DIR/bootstrap/etc/rc.conf"
+
+	exportroot "$DIR/bootstrap" > "$PWD/rootfs.img"
+}
