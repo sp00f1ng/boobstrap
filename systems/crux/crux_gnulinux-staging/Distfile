@@ -1,7 +1,7 @@
 #! /usr/bin/env sh
 
 stage() {
-	CHROOT="$(mktemp --directory --tmpdir="$DIR")"
+	CHROOT="$(mktemp -d -p $WORK)"
 	REBASE="$1"
 	SOURCE="$2"
 	TARGET="$3"
@@ -12,8 +12,8 @@ stage() {
 	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/xorg/"*
 	umount "$CRUXMEDIA"
 
-	if test -d "$PWD/distfiles/ports"; then
-		mv "$PWD/distfiles/ports" "$CHROOT/usr"
+	if test -d "$PWD/ports"; then
+		mv "$PWD/ports" "$CHROOT/usr"
 	fi
 
 	cp "$PWD/packages.opt" "$CHROOT/packages.opt"
@@ -110,6 +110,8 @@ EOF
 		return "$EXIT_CODE"
 	fi
 
+	# TODO
+	# EXIT_CODE for rebuild|release
 	case "$REBASE" in
 		"rebuild")
 			enter_chroot "$CHROOT" <<"EOF"
@@ -156,9 +158,11 @@ EOF
 		find "$CHROOT/usr/ports/$port" -name "*.pkg.tar.xz" -exec mv "{}" "$CRUXMEDIA/crux/$port" \;
 	done
 
-	mv "$CHROOT/usr/ports" "$DISTFILES/ports"
+	mv "$CHROOT/usr/ports" "$PWD/ports"
 
 	mkbootisofs "$CRUXMEDIA" --output "$TARGET"
+
+	find "$CRUXMEDIA" -mindepth 1 -delete
 }
 
 setup_chroot() {
@@ -193,11 +197,11 @@ leave_chroot() {
 }
 
 build() {
-	BOOTSTRAP="$DIR/bootstrap"
-	BOOTIMAGE="$DIR/bootimage"
-	INITRAMFS="$DIR/initramfs"
-	CRUXMEDIA="$DIR/cruxmedia"
-	DISTFILES="$DIR/distfiles"
+	BOOTSTRAP="$WORK/bootstrap"
+	BOOTIMAGE="$WORK/bootimage"
+	INITRAMFS="$WORK/initramfs"
+	CRUXMEDIA="$WORK/cruxmedia"
+	DISTFILES="$WORK/distfiles"
 
 	for dir in $BOOTSTRAP $BOOTIMAGE $INITRAMFS $CRUXMEDIA $DISTFILES; do
 		mkdir -p "$dir"
@@ -210,7 +214,7 @@ build() {
 	STAGE2ISO="$DISTFILES/stage2.iso"
 	STAGE3ISO="$DISTFILES/stage3.iso"
 
-	test -f "$MASTERISO" || wget -T 5 -O "$MASTERISO" "$MASTERURL" || return 1
+	test -a "$MASTERISO" || wget -T 5 -O "$MASTERISO" "$MASTERURL" || return 1
 
 	for loop in 0 1 2 3; do
 		case "$loop" in
@@ -219,13 +223,11 @@ build() {
 			"2") stage "rebuild" "$STAGE1ISO" "$STAGE2ISO" > $DISTFILES/build$loop.log 2>&1 ;;
 			"3") stage "release" "$STAGE2ISO" "$STAGE3ISO" > $DISTFILES/build$loop.log 2>&1 ;;
 		esac
-
-		grep -qs "^=======> ERROR:" "$DISTFILES/build$loop.log" && return 1
 	done
 
-	if test -d "$PWD/distfiles"; then
-		rm -r -f "$PWD/distfiles"
+	if test -d "$DIST"; then
+		find "$DIST" -mindepth 1 -delete
 	fi
 
-	mv "$DISTFILES" "$PWD/distfiles"
+	mv "$DISTFILES/"* "$DIST"
 }
