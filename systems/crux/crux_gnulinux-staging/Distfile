@@ -1,0 +1,234 @@
+#! /usr/bin/env sh
+
+stage() {
+	BOOTSTRAP="$DIR/bootstrap"
+	BOOTIMAGE="$DIR/bootimage"
+	INITRAMFS="$DIR/initramfs"
+	CRUXMEDIA="$DIR/cruxmedia"
+	DISTFILES="$DIR/distfiles"
+
+	for dir in $BOOTSTRAP $BOOTIMAGE $INITRAMFS $CRUXMEDIA $DISTFILES; do
+		mkdir -p "$dir"
+	done
+
+	CHROOT="$(mktemp -d -p $PWD)"
+	REBASE="$1"
+	SOURCE="$2"
+	TARGET="$3"
+
+	mount "$SOURCE" "$CRUXMEDIA"
+	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/core/"*
+	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/opt/"*
+	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/xorg/"*
+	umount "$CRUXMEDIA"
+
+	if test -f "$PWD/sources.tar"; then
+		tar -x -f "$PWD/sources.tar" -C "$CHROOT/usr/ports"
+	fi
+
+	cp "$PWD/packages.opt" "$CHROOT/packages.opt"
+
+	cp "$PWD/packages.xorg" "$CHROOT/packages.xorg"
+
+	cat > "$CHROOT/etc/ports/core.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/core/
+destination=/usr/ports/core
+EOF
+
+	cat > "$CHROOT/etc/ports/opt.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/opt/
+destination=/usr/ports/opt
+EOF
+
+	cat > "$CHROOT/etc/ports/xorg.rsync" <<"EOF"
+host=crux.nu
+collection=ports/crux-3.6/xorg/
+destination=/usr/ports/xorg
+EOF
+
+	cat >> "$CHROOT/etc/pkgmk.conf" <<"EOF"
+export JOBS=$(nproc)
+export MAKEFLAGS="-j $(($JOBS * 2))"
+
+PKGMK_COMPRESSION_MODE="xz"
+EOF
+
+	cat >> "$CHROOT/etc/prt-get.conf" <<"EOF"
+runscripts yes
+
+makecommand      fakeroot -- pkgmk
+EOF
+
+	setup_chroot "$CHROOT"
+
+	enter_chroot "$CHROOT" <<"EOF"
+localedef -i "en_US" -f "UTF-8" "en_US.UTF-8"
+
+export LANG="en_US.UTF-8"
+
+echo -e "toor\ntoor" | (passwd root)
+EOF
+
+	DOWNLOAD_RETRY="..."
+	while test "$DOWNLOAD_RETRY"; do
+		DOWNLOAD_RETRY="${DOWNLOAD_RETRY%?}"
+
+		enter_chroot "$CHROOT" <<"EOF"
+ports -u || exit 1
+
+cd /usr/ports
+for port in core/* opt/fakeroot; do
+	if cd "/usr/ports/$port"; then
+		fakeroot -- pkgmk -do || exit 1
+	fi
+done
+cd
+
+cd /usr/ports/core
+for pkg in *; do
+	if cd "/usr/ports/core/$pkg"; then
+		fakeroot -- pkgmk -do || exit 1
+	fi
+done
+cd
+
+cd /usr/ports/opt
+for pkg in $(cat /packages.opt); do
+	if cd "/usr/ports/opt/$pkg"; then
+		fakeroot -- pkgmk -do || exit 1
+	fi
+done
+cd
+
+cd /usr/ports/xorg
+for pkg in $(cat /packages.xorg); do
+	if cd "/usr/ports/xorg/$pkg"; then
+		fakeroot -- pkgmk -do || exit 1
+	fi
+done
+cd
+EOF
+
+		EXIT_CODE="$?"
+
+		case "$EXIT_CODE" in
+			"1") sleep 42 ;;
+			"0") unset DOWNLOAD_RETRY EXIT_CODE ;;
+			*) return $EXIT_CODE ;;
+		esac
+
+	done
+
+	if test "$EXIT_CODE"; then
+		return $EXIT_CODE
+	fi
+
+	case "$REBASE" in
+		"rebuild")
+			enter_chroot "$CHROOT" <<"EOF"
+cd /usr/ports
+for port in core/* opt/fakeroot; do
+	if cd "/usr/ports/$port"; then
+		if test -f "/usr/ports/$port/pre-install"; then
+			chmod +x /usr/ports/$port/pre-install
+			/usr/ports/$port/pre-install
+		fi
+		fakeroot -- pkgmk || exit 1
+	fi
+done
+cd
+EOF
+
+			mkdir "$CRUXMEDIA/info"
+			mv "$CHROOT/var/lib/pkg/db" "$CRUXMEDIA/info/db"
+			;;
+		"release")
+			enter_chroot "$CHROOT" <<"EOF"
+cd /usr/ports
+for port in core/* opt/fakeroot; do
+	if cd "/usr/ports/$port"; then
+		prt-get update --log "${port##*/}" || exit 1
+	fi
+done
+cd
+
+prt-get depinst --log $(cat /packages.opt) $(cat /packages.xorg)
+EOF
+
+			mv "$CHROOT/var/log/pkgbuild" "$CRUXMEDIA/info"
+			mv "$CHROOT/var/lib/pkg/db" "$CRUXMEDIA/info/db"
+			;;
+	esac
+
+	leave_chroot "$CHROOT"
+
+	for port in core opt xorg; do
+		mkdir -p "$CRUXMEDIA/crux/$port"
+		find "$CHROOT/usr/ports/$port" -name "*.pkg.tar.xz" -exec mv "{}" "$CRUXMEDIA/crux/$port" \;
+	done
+
+	gzip -9 -r "$CRUXMEDIA/info"
+
+	mkbootisofs "$CRUXMEDIA" --output "$TARGET"
+
+	cd "$CRUXMEDIA"
+	find * > $TARGET.txt
+	cd "$OLDPWD"
+
+	tar -c -f "$PWD/sources.tar" -C "$CHROOT/usr/ports" .
+}
+
+setup_chroot() {
+	ROOT="$1"
+
+	mount -B "/dev" "$ROOT/dev"
+	mount -B "/tmp" "$ROOT/tmp"
+	mount -B "/run" "$ROOT/run"
+	mount -t proc proc "$ROOT/proc"
+	mount -t sysfs none "$ROOT/sys"
+	mount -t devpts -o noexec,nosuid,gid=tty,mode=0620 devpts "$ROOT/dev/pts"
+
+	if grep -qs "/sys/firmware/efi/efivars" "/proc/mounts"; then
+		mount -B "/sys/firmware/efi/efivars" "$ROOT/sys/firmware/efi/efivars"
+	fi
+
+	cp "/etc/resolv.conf" "$ROOT/etc/resolv.conf"
+}
+
+enter_chroot() {
+	ROOT="$1"
+
+	chroot "$ROOT" /usr/bin/env PS1="(chroot) $PS1" /bin/bash
+}
+
+leave_chroot() {
+	ROOT="$1"
+
+	for mount in $(grep "^$ROOT" "/proc/mounts" | awk '{print $2}'); do
+		umount -R "$mount"
+	done
+}
+
+build() {
+	MASTERURL="http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso"
+	MASTERISO="$PWD/master.iso"
+	STAGE0ISO="$DISTFILES/stage0.iso"
+	STAGE1ISO="$DISTFILES/stage1.iso"
+	STAGE2ISO="$DISTFILES/stage2.iso"
+	STAGE3ISO="$DISTFILES/stage3.iso"
+
+	test -f "$MASTERISO" || wget -T 5 -O "$MASTERISO" "$MASTERURL" || return 1
+
+	for loop in 0 1 2 3; do
+		case "$loop" in
+			"0") stage "rebuild" "$MASTERISO" "$STAGE0ISO" ;;
+			"1") stage "rebuild" "$STAGE0ISO" "$STAGE1ISO" ;;
+			"2") stage "rebuild" "$STAGE1ISO" "$STAGE2ISO" ;;
+			"3") stage "release" "$STAGE2ISO" "$STAGE3ISO" ;;
+		esac
+
+		grep -qs "^=======> ERROR:" "$DISTFILES/stage$loop.log" && return 1
+	done
+}

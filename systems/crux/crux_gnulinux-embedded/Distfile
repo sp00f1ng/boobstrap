@@ -33,5 +33,5 @@ build() {
 
 	sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$DIR/bootstrap/etc/rc.conf"
 
-	exportroot "$DIR/bootstrap" > "$PWD/rootfs.img"
+	exportroot "$DIR/bootstrap" > "$DIR/distfiles/rootfs.img"
 }

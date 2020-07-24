@@ -16,7 +16,7 @@ setup_workdir() {
 }
 
 clean_workdir() {
-	grep -qs "$DIR" "/proc/mounts" || rm -r -f "$DIR"
+	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
 }
 
 main() {

@@ -58,7 +58,7 @@ overlay() {
 				SOURCE="$overlay"
 				TARGET="$DESTINATION/$NUM-$(basename $overlay).squashfs"
 				echo "SquashFS [$SOURCE] => [$TARGET]" | msg -2 --foreground "Light Blue"
-				mksquashfs "$SOURCE" "$TARGET" -quiet -b 1048576 -comp xz -Xdict-size 100% 1>/dev/null 2>/dev/null
+				mksquashfs "$SOURCE" "$TARGET" -b 1048576 -comp xz -Xdict-size 100% 1>/dev/null 2>/dev/null
 				CODE="$?"
 				;;
 			*)
