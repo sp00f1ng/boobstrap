@@ -1,16 +1,6 @@
 #! /usr/bin/env sh
 
 stage() {
-	BOOTSTRAP="$DIR/bootstrap"
-	BOOTIMAGE="$DIR/bootimage"
-	INITRAMFS="$DIR/initramfs"
-	CRUXMEDIA="$DIR/cruxmedia"
-	DISTFILES="$DIR/distfiles"
-
-	for dir in $BOOTSTRAP $BOOTIMAGE $INITRAMFS $CRUXMEDIA $DISTFILES; do
-		mkdir -p "$dir"
-	done
-
 	CHROOT="$(mktemp -d -p $PWD)"
 	REBASE="$1"
 	SOURCE="$2"
@@ -212,6 +202,16 @@ leave_chroot() {
 }
 
 build() {
+	BOOTSTRAP="$DIR/bootstrap"
+	BOOTIMAGE="$DIR/bootimage"
+	INITRAMFS="$DIR/initramfs"
+	CRUXMEDIA="$DIR/cruxmedia"
+	DISTFILES="$DIR/distfiles"
+
+	for dir in $BOOTSTRAP $BOOTIMAGE $INITRAMFS $CRUXMEDIA $DISTFILES; do
+		mkdir -p "$dir"
+	done
+
 	MASTERURL="http://ftp.morpheus.net/pub/linux/crux/crux-3.5/iso/crux-3.5.iso"
 	MASTERISO="$PWD/master.iso"
 	STAGE0ISO="$DISTFILES/stage0.iso"
