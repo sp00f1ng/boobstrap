@@ -1,22 +1,18 @@
 #! /usr/bin/env sh
 
 check_distfile() {
-	if test -f "$PWD/Distfile"; then
-		return 0
+	if ! test -f "$PWD/Distfile"; then
+		return 1
 	fi
-	return 1
+	return 0
 }
 
 setup_workdir() {
 	DIR=$(mktemp -d -p "$PWD")
-
-	for dir in bootstrap bootimage initramfs distfiles; do
-		mkdir -p "$DIR/$dir"
-	done
 }
 
 clean_workdir() {
-	grep -qs "$DIR" "/proc/mounts" || echo rm -r -f "$DIR"
+	grep -qs "$DIR" "/proc/mounts" || rm -r -f "$DIR"
 }
 
 main() {
