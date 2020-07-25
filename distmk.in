@@ -8,16 +8,18 @@ check_distfile() {
 }
 
 setup_workdir() {
-	WORK="$(mktemp -d -p "$PWD" --suffix=.work)"
-	DIST="$(mktemp -d -p "$PWD" --suffix=.dist)"
-	BOOT="$(mktemp -d -p "$PWD" --suffix=.boot)"
+	readonly WORK="$(mktemp -d -p "$PWD" --suffix=.work)"
+	readonly DIST="$(mktemp -d -p "$PWD" --suffix=.dist)"
+	readonly BOOT="$(mktemp -d -p "$PWD" --suffix=.boot)"
 	ln -sf "$(basename $WORK)" "$PWD/work"
 	ln -sf "$(basename $DIST)" "$PWD/dist"
 	ln -sf "$(basename $BOOT)" "$PWD/boot"
 }
 
 clean_workdir() {
-	grep -qs "$WORK" "/proc/mounts" || rm -r -f "$WORK"
+	for dir in $WORK $DIST $BOOT; do
+		grep -qs "$dir" "/proc/mounts" || rm -r -f "$dir"
+	done
 }
 
 main() {

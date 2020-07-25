@@ -1,7 +1,7 @@
 #! /usr/bin/env sh
 
 stage() {
-	CHROOT="$(mktemp -d -p $WORK)"
+	CHROOT="$(mktemp -d -p $WORK --suffix=.root)"
 	REBASE="$1"
 	SOURCE="$2"
 	TARGET="$3"
@@ -117,6 +117,15 @@ EOF
 			enter_chroot "$CHROOT" <<"EOF"
 cd /usr/ports
 for port in core/* opt/fakeroot; do
+	case "$port" in
+		"core/dhcpcd") continue ;;
+		"core/exim") continue ;;
+		"core/hdparm") continue ;;
+		"core/httpup") continue ;;
+		"core/openssh") continue ;;
+		"core/sudo") continue ;;
+		"core/vim") continue ;;
+	esac
 	if cd "/usr/ports/$port"; then
 		if test -f "/usr/ports/$port/pre-install"; then
 			chmod +x /usr/ports/$port/pre-install
@@ -148,6 +157,11 @@ done
 
 prt-get listinst | sort > /packages.installed
 EOF
+
+			mv "$CHROOT/packages.required" "$DISTFILES"
+			mv "$CHROOT/packages.installed" "$DISTFILES"
+			mv "$CHROOT/var/log/pkgbuild" "$DISTFILES"
+			mv "$CHROOT/var/lib/pkg/db" "$DISTFILES"
 			;;
 	esac
 
@@ -158,7 +172,7 @@ EOF
 		find "$CHROOT/usr/ports/$port" -name "*.pkg.tar.xz" -exec mv "{}" "$CRUXMEDIA/crux/$port" \;
 	done
 
-	mv "$CHROOT/usr/ports" "$PWD/ports"
+	mv "$CHROOT/usr/ports" "$PWD"
 
 	mkbootisofs "$CRUXMEDIA" --output "$TARGET"
 
@@ -214,7 +228,7 @@ build() {
 	STAGE2ISO="$DISTFILES/stage2.iso"
 	STAGE3ISO="$DISTFILES/stage3.iso"
 
-	test -a "$MASTERISO" || wget -T 5 -O "$MASTERISO" "$MASTERURL" || return 1
+	test -f "$MASTERISO" || wget -T 5 -O "$MASTERISO" "$MASTERURL" || return 1
 
 	for loop in 0 1 2 3; do
 		case "$loop" in
