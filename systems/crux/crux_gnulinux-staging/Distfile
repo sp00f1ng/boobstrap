@@ -6,11 +6,11 @@ stage() {
 	SOURCE="$2"
 	TARGET="$3"
 
-	mount "$SOURCE" "$CRUXMEDIA"
+	mount "$SOURCE" "$CRUXMEDIA" || return 1
 	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/core/"*
 	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/opt/"*
 	mkbootstrap "crux_gnulinux" "$CHROOT" "$CRUXMEDIA/crux/xorg/"*
-	umount "$CRUXMEDIA"
+	umount "$CRUXMEDIA" || return 1
 
 	if test -d "$PWD/ports"; then
 		mv "$PWD/ports" "$CHROOT/usr"
@@ -149,15 +149,13 @@ makecommand      fakeroot -- pkgmk
 EOF
 
 			enter_chroot "$CHROOT" <<"EOF"
-echo $(cd /usr/ports/core ; find * -maxdepth 0 -type d) $(cat /packages.opt) $(cat /packages.xorg) | tr ' ' '\n' | sort > /packages.required
-
-for port in $(cat /packages.required); do
-	prt-get depinst $port
+for port in $(cd /usr/ports/core ; find * -maxdepth 0 -type d) $(cat /packages.xorg) $(cat /packages.opt); do
+	prt-get depinst -fr $port
 done
 
+echo $(cd /usr/ports/core ; find * -maxdepth 0 -type d) $(cat /packages.opt) $(cat /packages.xorg) | tr ' ' '\n' | sort > /packages.required
 prt-get listinst | sort > /packages.installed
 EOF
-
 			mv "$CHROOT/packages.required" "$DISTFILES"
 			mv "$CHROOT/packages.installed" "$DISTFILES"
 			mv "$CHROOT/var/log/pkgbuild" "$DISTFILES"
@@ -167,6 +165,8 @@ EOF
 
 	leave_chroot "$CHROOT"
 
+	find "$CRUXMEDIA" -mindepth 1 -delete
+
 	for port in core opt xorg; do
 		mkdir -p "$CRUXMEDIA/crux/$port"
 		find "$CHROOT/usr/ports/$port" -name "*.pkg.tar.xz" -exec mv "{}" "$CRUXMEDIA/crux/$port" \;
@@ -175,8 +175,6 @@ EOF
 	mv "$CHROOT/usr/ports" "$PWD"
 
 	mkbootisofs "$CRUXMEDIA" --output "$TARGET"
-
-	find "$CRUXMEDIA" -mindepth 1 -delete
 }
 
 setup_chroot() {
@@ -190,7 +188,7 @@ setup_chroot() {
 	mount -t devpts -o noexec,nosuid,gid=tty,mode=0620 devpts "$ROOT/dev/pts"
 
 	if grep -qs "/sys/firmware/efi/efivars" "/proc/mounts"; then
-		mount -B "/sys/firmware/efi/efivars" "$ROOT/sys/firmware/efi/efivars"
+		mount -B -o ro "/sys/firmware/efi/efivars" "$ROOT/sys/firmware/efi/efivars"
 	fi
 
 	cp "/etc/resolv.conf" "$ROOT/etc/resolv.conf"
@@ -208,6 +206,57 @@ leave_chroot() {
 	for mount in $(grep "$ROOT" "/proc/mounts" | awk '{print $2}'); do
 		umount -R "$mount"
 	done
+}
+
+kernel_release() {
+	mkdir -p "$BOOTIMAGE/crux/kernel"
+
+	cd "$(newkernel 5.4.53 -s $BOOTIMAGE/crux/kernel)"
+
+	make defconfig
+
+	install -D ".config" "../linux-5.4.53.defconfig"
+
+	make kvmconfig
+
+	install -D ".config" "../linux-5.4.53.kvmconfig"
+
+	# SquashFS + OverlayFS
+	scripts/config -e OVERLAY_FS
+
+	scripts/config -e SQUASHFS
+	scripts/config -e SQUASHFS_XZ
+
+	# Auto select dependencies
+	make olddefconfig
+
+	make -j$(($(nproc) * 2))
+
+	install -D "arch/x86/boot/bzImage" "$BOOTIMAGE/boot/vmlinuz"
+
+	make tarxz-pkg
+
+	tar -x -f *".tar.xz" -C "$BOOTSTRAP"
+
+	cd "$OLDPWD"
+
+	rm -r -f "$OLDPWD"
+}
+
+os_release() {
+	mkbootstrap "crux_gnulinux" "$BOOTSTRAP" --ports "$CRUXMEDIA/crux/core" $(cat /usr/systems/crux/crux_gnulinux-embedded/packages.core)
+
+	mv "$CRUXMEDIA/crux" "$BOOTIMAGE"
+
+	mkinitramfs "$INITRAMFS" --output "$INITRAMFS.img"
+	xz --check="crc32" --threads=0 "$INITRAMFS.img"
+
+	install -D "$INITRAMFS.img.xz" "$BOOTIMAGE/boot/initrd"
+
+	mkbootisofs "$BOOTIMAGE" \
+		--legacy-boot "grub2" --efi "grub2" \
+		--overlay "$BOOTSTRAP" --squashfs \
+		--output "$DISTFILES/crux-gnulinux-stage3-amd64-$(date -u +%Y%m%dT%H%M%SZ).iso"
 }
 
 build() {
@@ -239,9 +288,11 @@ build() {
 		esac
 	done
 
-	if test -d "$DIST"; then
-		find "$DIST" -mindepth 1 -delete
-	fi
+	kernel_release
+
+	os_release
+
+	find "$DIST" -mindepth 1 -delete
 
 	mv "$DISTFILES/"* "$DIST"
 }

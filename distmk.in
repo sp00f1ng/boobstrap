@@ -18,8 +18,9 @@ setup_workdir() {
 
 clean_workdir() {
 	for dir in $WORK $DIST $BOOT; do
-		grep -qs "$dir" "/proc/mounts" || rm -r -f "$dir"
+		grep -qs "$dir" "/proc/mounts" || echo rm -r -f "$dir"
 	done
+	echo rm "$PWD/work" "$PWD/dist" "$PWD/boot"
 }
 
 main() {
