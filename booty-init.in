@@ -356,7 +356,7 @@ main() {
 		umount /run
 
 		echo "Switching root"
-		exec switch_root "$SWITCH_ROOTFS" "/sbin/init" 2>/dev/null
+		exec switch_root "$SWITCH_ROOTFS" "$(readlink -f /sbin/init)" 2>/dev/null
 	else
 		echo "Where there is a shell, there is a way..."
 		exec sh
