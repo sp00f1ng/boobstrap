@@ -118,7 +118,9 @@ EOF
 cd /usr/ports
 for port in core/* opt/fakeroot; do
 	case "$port" in
+		"core/dcron") continue ;;
 		"core/dhcpcd") continue ;;
+		"core/eudev") continue ;;
 		"core/exim") continue ;;
 		"core/hdparm") continue ;;
 		"core/httpup") continue ;;

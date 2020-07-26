@@ -160,6 +160,7 @@ cheat_sheet() {
 			"booty.use-shmfs") USE_FILESYSTEM="SHMFS" ;;
 			"booty.copy-to-ram"|"toram") COPY_TO_RAM="yes" ;;
 			"!booty.copy-to-ram"|"!toram") COPY_TO_RAM="no" ;;
+			"booty.init="*|"init=") INIT="${1##*=}" ;;
 		esac
 		shift
 	done
@@ -329,6 +330,9 @@ main() {
 			if mount -t overlay -o lowerdir="$L",upperdir="$U",workdir="$W" rootfs "$SWITCH_ROOTFS"; then
 				# FIXME
 				# Still works but I don't like how it works.
+				# TODO
+				# Move overlays to /newroot/mnt before mounting.
+				# Keep initramfs is clean.
 				mkdir -p "$SWITCH_ROOTFS$DRIVER_PATH"
 				mount -o bind,ro "$DRIVER_PATH" "$SWITCH_ROOTFS$DRIVER_PATH"
 			else
@@ -347,7 +351,11 @@ main() {
 	#	echo "Volume: $volume"
 	# done < /tmp/.volume
 
-	if test -x "$SWITCH_ROOTFS/sbin/init"; then
+	if test "$INIT" = ""; then
+		INIT="/sbin/init"
+	fi
+
+	if test -x "$SWITCH_ROOTFS$INIT"; then
 		echo "Uninstall /proc /sys /dev /run"
 
 		umount /proc
@@ -356,7 +364,7 @@ main() {
 		umount /run
 
 		echo "Switching root"
-		exec switch_root "$SWITCH_ROOTFS" "$(readlink -f /sbin/init)" 2>/dev/null
+		exec switch_root "$SWITCH_ROOTFS" "$INIT" 2>/dev/null
 	else
 		echo "Where there is a shell, there is a way..."
 		exec sh
