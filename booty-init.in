@@ -160,7 +160,7 @@ cheat_sheet() {
 			"booty.use-shmfs") USE_FILESYSTEM="SHMFS" ;;
 			"booty.copy-to-ram"|"toram") COPY_TO_RAM="yes" ;;
 			"!booty.copy-to-ram"|"!toram") COPY_TO_RAM="no" ;;
-			"booty.init="*|"init=") INIT="${1##*=}" ;;
+			"booty.init="*|"init="*) INIT="${1##*=}" ;;
 		esac
 		shift
 	done
