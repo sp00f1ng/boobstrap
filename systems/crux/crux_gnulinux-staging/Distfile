@@ -152,7 +152,11 @@ EOF
 
 			enter_chroot "$CHROOT" <<"EOF"
 for port in $(cd /usr/ports/core ; find * -maxdepth 0 -type d) $(cat /packages.xorg) $(cat /packages.opt); do
-	prt-get depinst -fr $port
+	if prt-get isinst "$port"; then
+		prt-get update -fr $port
+	else
+		prt-get depinst -fr $port
+	fi
 done
 
 echo $(cd /usr/ports/core ; find * -maxdepth 0 -type d) $(cat /packages.opt) $(cat /packages.xorg) | tr ' ' '\n' | sort > /packages.required
@@ -248,7 +252,9 @@ kernel_release() {
 os_release() {
 	mkbootstrap "crux_gnulinux" "$BOOTSTRAP" --ports "$CRUXMEDIA/crux/core" $(cat /usr/systems/crux/crux_gnulinux-embedded/packages.core)
 
-	mv "$CRUXMEDIA/crux" "$BOOTIMAGE"
+	mv "$CRUXMEDIA/crux/core" "$BOOTIMAGE/crux"
+	mv "$CRUXMEDIA/crux/opt" "$BOOTIMAGE/crux"
+	mv "$CRUXMEDIA/crux/xorg" "$BOOTIMAGE/crux"
 
 	mkinitramfs "$INITRAMFS" --output "$INITRAMFS.img"
 	xz --check="crc32" --threads=0 "$INITRAMFS.img"
@@ -283,18 +289,16 @@ build() {
 
 	for loop in 0 1 2 3; do
 		case "$loop" in
-			"0") stage "rebuild" "$MASTERISO" "$STAGE0ISO" > $DISTFILES/build$loop.log 2>&1 ;;
-			"1") stage "rebuild" "$STAGE0ISO" "$STAGE1ISO" > $DISTFILES/build$loop.log 2>&1 ;;
-			"2") stage "rebuild" "$STAGE1ISO" "$STAGE2ISO" > $DISTFILES/build$loop.log 2>&1 ;;
-			"3") stage "release" "$STAGE2ISO" "$STAGE3ISO" > $DISTFILES/build$loop.log 2>&1 ;;
+			"0") stage "rebuild" "$MASTERISO" "$STAGE0ISO" ;;
+			"1") stage "rebuild" "$STAGE0ISO" "$STAGE1ISO" ;;
+			"2") stage "rebuild" "$STAGE1ISO" "$STAGE2ISO" ;;
+			"3") stage "release" "$STAGE2ISO" "$STAGE3ISO" ;;
 		esac
 	done
 
 	kernel_release
 
 	os_release
-
-	find "$DIST" -mindepth 1 -delete
 
 	mv "$DISTFILES/"* "$DIST"
 }

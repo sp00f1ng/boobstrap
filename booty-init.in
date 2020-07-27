@@ -355,7 +355,7 @@ main() {
 		INIT="/sbin/init"
 	fi
 
-	if test -x "$SWITCH_ROOTFS$INIT"; then
+	if test -x "$SWITCH_ROOTFS$INIT" || test -L "$SWITCH_ROOTFS$INIT"; then
 		echo "Uninstall /proc /sys /dev /run"
 
 		umount /proc
