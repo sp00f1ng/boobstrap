@@ -35,6 +35,7 @@ install: all
 	ln -sf booty $(DESTDIR)$(BINDIR)/exportroot
 	ln -sf booty $(DESTDIR)$(BINDIR)/importroot
 	install -D -m 0755 distmk.in $(DESTDIR)$(BINDIR)/distmk
+	install -D -m 0755 distgen.in $(DESTDIR)$(BINDIR)/distgen
 
 clean:
 	rm -f booty

@@ -117,17 +117,6 @@ EOF
 			enter_chroot "$CHROOT" <<"EOF"
 cd /usr/ports
 for port in core/* opt/fakeroot; do
-	case "$port" in
-		"core/dcron") continue ;;
-		"core/dhcpcd") continue ;;
-		"core/eudev") continue ;;
-		"core/exim") continue ;;
-		"core/hdparm") continue ;;
-		"core/httpup") continue ;;
-		"core/openssh") continue ;;
-		"core/sudo") continue ;;
-		"core/vim") continue ;;
-	esac
 	if cd "/usr/ports/$port"; then
 		if test -f "/usr/ports/$port/pre-install"; then
 			chmod +x /usr/ports/$port/pre-install
@@ -264,10 +253,26 @@ os_release() {
 	mkbootisofs "$BOOTIMAGE" \
 		--legacy-boot "grub2" --efi "grub2" \
 		--overlay "$BOOTSTRAP" --squashfs \
-		--output "$DISTFILES/crux-gnulinux-stage3-amd64-$(date -u +%Y%m%dT%H%M%SZ).iso"
+		--output "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.iso"
+
+	sha512sum "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.iso" >> "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.iso.DIGESTS"
+
+	rm -r -f "$BOOTSTRAP/"*
+}
+
+stage3_release() {
+	mkbootstrap "crux_gnulinux" "$BOOTSTRAP" --ports "$CRUXMEDIA/crux/core"
+
+	tar -c -J -v -f "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.tar.xz" -C "$BOOTSTRAP" --xattrs-include="*.*" --numeric-owner . | gzip -c -9 > "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.tar.xz.CONTENTS.gz"
+
+	sha512sum "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.tar.xz" >> "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.tar.xz.DIGESTS"
+	sha512sum "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.tar.xz.CONTENTS.gz" >> "$DISTFILES/crux-gnulinux-stage3-amd64-$TIMESTAMP.tar.xz.DIGESTS"
+
+	rm -r -f "$BOOTSTRAP/"*
 }
 
 build() {
+	TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 	BOOTSTRAP="$WORK/bootstrap"
 	BOOTIMAGE="$WORK/bootimage"
 	INITRAMFS="$WORK/initramfs"
@@ -295,6 +300,8 @@ build() {
 			"3") stage "release" "$STAGE2ISO" "$STAGE3ISO" ;;
 		esac
 	done
+
+	stage3_release
 
 	kernel_release
 

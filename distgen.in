@@ -1,0 +1,33 @@
+#! /usr/bin/env sh
+
+main() {
+	SYSTEM="/usr/systems"
+	TARGET=""
+
+	while test "$1"; do
+		case "$1" in
+			*) TARGET="$1" ;;
+		esac
+		shift
+	done
+
+	if test "$TARGET" = ""; then
+		return 1
+	fi
+
+	if test -d "$SYSTEM/$TARGET"; then
+		cd "$SYSTEM/$TARGET"
+		echo "building $TARGET"
+		echo "starting build $(date)"
+		distmk
+		echo "build done $(date)"
+		cd "$OLDPWD"
+	fi
+}
+
+readonly DISTGEN_COMMAND="$0"
+readonly DISTGEN_ROOT="$PWD"
+
+main "$@"
+
+exit "$?"

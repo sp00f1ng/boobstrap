@@ -7,7 +7,7 @@ check_distfile() {
 	return 0
 }
 
-setup_workdir() {
+setup_temporarely() {
 	readonly WORK="$(mktemp -d -p "$PWD" --suffix=.work)"
 	readonly DIST="$(mktemp -d -p "$PWD" --suffix=.dist)"
 	readonly BOOT="$(mktemp -d -p "$PWD" --suffix=.boot)"
@@ -16,21 +16,33 @@ setup_workdir() {
 	ln -sf "$(basename $BOOT)" "$PWD/boot"
 }
 
-clean_workdir() {
-	for dir in $WORK; do
-		grep -qs "$dir" "/proc/mounts" || rm -r -f "$dir"
+clean_temporarely() {
+	for dir in "$DISTMK_ROOT/tmp."*".work"; do
+		if grep -qs "$dir" "/proc/mounts"; then
+			continue
+		fi
+		rm -r -f "$dir"
 	done
+
 	rm "$PWD/work"
 }
 
 main() {
-	setup_workdir
+	setup_temporarely
+
 	build
-	clean_workdir
+
+	clean_temporarely
 }
 
 if check_distfile; then
 	. "$PWD/Distfile"
 fi
 
+readonly DISTMK_COMMAND="$0"
+readonly DISTMK_ROOT="$PWD"
+
 main "$@"
+
+exit "$?"
+
