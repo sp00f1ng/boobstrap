@@ -1,5 +1,9 @@
 build() {
-	mkbootstrap "crux_gnulinux" "$DIR/bootstrap"					\
+	mkbootstrap "crux_gnulinux" "$WORK/bootstrap"					\
+											\
+		--ports "$PWD"								\
+											\
+		"linux"									\
 											\
 		--ports "/root/cruxmedia/crux/core"					\
 											\
@@ -22,16 +26,26 @@ build() {
 		"grep"			"openssl"		"zlib"			\
 		"gzip"			"pkgutils"
 
-	install -d -m 0700 "$DIR/bootstrap/root/.ssh"
+	install -d -m 0700 "$WORK/bootstrap/root/.ssh"
 
 	if cd "$HOME/.ssh"; then
 		for key in *".pub"; do
-			cat "$key" >> "$DIR/bootstrap/root/.ssh/authorized_keys"
+			cat "$key" >> "$WORK/bootstrap/root/.ssh/authorized_keys"
 		done
 		cd "$OLDPWD"
 	fi
 
-	sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$DIR/bootstrap/etc/rc.conf"
+	sed -i "s/SERVICES=.*/SERVICES=(lo net crond sshd)/g" "$WORK/bootstrap/etc/rc.conf"
 
-	exportroot "$DIR/bootstrap" > "$DIR/distfiles/rootfs.img"
+	install -D "$WORK/bootstrap/boot/vmlinuz-"* "$BOOT/boot/vmlinuz"
+
+	mkdir -p $WORK/initramfs
+	mkbootstrap "crux_gnulinux" "$WORK/initramfs"					\
+											\
+		--ports "$PWD"								\
+											\
+		"linux"
+	mkinitramfs "$WORK/initramfs" --output "$BOOT/boot/initrd"
+
+	mkbootisofs "$BOOT" --overlay "$WORK/bootstrap" --efi grub2 --legacy-boot grub2 --output "$PWD/embedded.iso"
 }

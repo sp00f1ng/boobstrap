@@ -363,8 +363,8 @@ main() {
 		umount /dev
 		umount /run
 
-		echo "Switching root"
-		exec switch_root "$SWITCH_ROOTFS" "$INIT" 2>/dev/null
+		echo "Switching root "
+		exec switch_root "$SWITCH_ROOTFS" "$INIT" < /dev/console > /dev/console
 	else
 		echo "Where there is a shell, there is a way..."
 		exec sh
