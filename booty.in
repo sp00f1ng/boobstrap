@@ -1,628 +1,578 @@
 #! /usr/bin/env sh
 
-mkbootstrap() {
-	SYSTEM="$1"
-
-	if test "$2"; then
-		shift
-	else
-		return 1
-	fi
-
-	case "$SYSTEM" in
-		"archlinux_gnulinux"|"arch_gnulinux") pacstrap "$@" ;;
-		"manjaro_gnulinux") basestrap "$@" ;;
-		"debian_gnulinux") debootstrap "$@" ;;
-		"crux_gnulinux") cruxstrap "$@" ;;
-		"fedora_gnulinux"|"redhat_gnulinux"|"centos_gnulinux") dnf "$@" ;;
-	esac
+do_error() {
+	echo "$@" | sent_message --STDERR
 }
 
-overlay() {
-	DESTINATION=""
-	OVERLAY=""
-	FORMAT=""
-	NUM=0
+do_panic() {
+	do_error ""
+	do_error "Interrupted"
 
-	while test "$1"; do
+	if test -d "$TMPDIR"; then
+		rm -r -f "$TMPDIR"
+	fi
+
+	exit 1
+}
+
+do_export() {
+	find . -print0 | cpio --create --format "newc" --null --quiet
+}
+
+do_import() {
+	cpio --extract --make-directories --format "newc" --quiet
+}
+
+sent_message() {
+	STDERR="-"
+	STDOUT="+"
+	INDENT=""
+
+	while ! test "$#" = "0"; do
 		case "$1" in
-			"--destination") DESTINATION="$(realpath $2)" ; shift ;;
-			"--overlay") OVERLAY="$OVERLAY $(realpath $2)" ; shift ;;
-			"--format") FORMAT="$2" ; shift ;;
+			"--STDERR") STDERR="+" STDOUT="-" ;;
+			"--STDOUT") STDERR="-" STDOUT="+" ;;
 		esac
 		shift
 	done
-	if test "$DESTINATION" = ""; then
-		echo "No destination directory specified" | msg -2 --foreground "Brown"
-		return 1
+
+	if test "$STDERR" = "+"; then
+		while read -r MESSAGE; do
+			echo "$INDENT$MESSAGE" >&2
+		done
 	fi
-	echo "Prepare overlays" | msg -2
-	hi
-	if test "$FORMAT" = ""; then
-		FORMAT="cpio"
-		echo "No overlay format specified, fallback to using CPIO" | msg -2 --foreground "Brown"
+
+	if test "$STDOUT" = "+"; then
+		while read -r MESSAGE; do
+			echo "$INDENT$MESSAGE" >&1
+		done
 	fi
-	for overlay in $OVERLAY; do
-		NUM="$(($NUM + 10))"
-		case "$FORMAT" in
-			"cpio")
-				SOURCE="$overlay"
-				TARGET="$DESTINATION/$NUM-$(basename $overlay).cpio"
-				echo "CPIO [$SOURCE] => [$TARGET]" | msg -2 --foreground "Light Blue"
-				cd "$SOURCE"
-				find . -print0 | cpio --create --format "newc" --null --quiet 1>$TARGET 2>/dev/null
-				CODE="$?"
-				cd "$OLDPWD"
-				;;
-			"squashfs"|"squashfs-"*)
-				SOURCE="$overlay"
-				TARGET="$DESTINATION/$NUM-$(basename $overlay).squashfs"
-				echo "SquashFS [$SOURCE] => [$TARGET]" | msg -2 --foreground "Light Blue"
-				mksquashfs "$SOURCE" "$TARGET" -b 1048576 -comp xz -Xdict-size 100% 1>/dev/null 2>/dev/null
-				CODE="$?"
-				;;
-			*)
-				CODE="1"
-				echo "Unknown filesystem format" | msg -2 --foreground "Brown"
-				;;
-		esac
-		hi
-		case "$CODE" in
-			"0") echo "Success" | msg -2 --foreground "Light Green" ;;
-			*) echo "Failure [$CODE]" | msg -2 --foreground "Brown" ;;
-		esac
-		lo
-	done
-	lo
-	echo "Overlays done" | msg -2
-	return "$CODE"
 }
 
-mkinitramfs() {
-	DIR=""
-	OUTPUT=""
-	IS_STANDALONE=""
-	STR_OVERLAY=""
-	STR_FORMAT=""
+#
+# Initial RAM Disk Section: Build initramfs
+#
 
-	while test "$1"; do
+ramdisk() {
+	INSTALL_PATH=""
+	IMAGE=""
+
+	while ! test "$#" = "0"; do
 		case "$1" in
-			"--output") OUTPUT="$(realpath $2)" ; shift ;;
-			"--standalone") IS_STANDALONE="yes" ;;
-			"--overlay") STR_OVERLAY="$STR_OVERLAY --overlay $2" ; shift ;;
-			"--cpio") STR_FORMAT="--format cpio" ;;
-			"--squashfs") STR_FORMAT="--format squashfs" ;;
-			"--squashfs-xz") STR_FORMAT="--format squashfs-xz" ;;
-			"--help"|"-h")
-				cat <<EOF
-$BOOTY_NAME $BOOTY_VERSION
-Usage: mkinitramfs <directory> [options]...
-Creates bootable ram disk image from the directory.
-
-  --output <file>            specify output file,
-                               by default outputs to STDOUT
-
-  --standalone               uses directory "as is"
-
-  --overlay                  add overlay
-
-  --squashfs,                pre-defined command mksquashfs
-  --squashfs-xz              pre-defined command mksquashfs
-
-Report about bugs & features to $(echo c3Bvb2ZpbmdAdm9nbGVhLm5ldAo= | base64 -d)
-EOF
-exit 0
+			"--install-path") INSTALL_PATH="$2" ; shift ;;
+			"--image") IMAGE="$2" ; shift ;;
+			"-"*)
+				echo "invalid option $1" | sent_message
 				;;
 			*)
-				if test "$DIR" = ""; then
-					DIR="$1"
+				if test "$INSTALL_PATH" = ""; then
+					INSTALL_PATH="$1"
 				fi
 				;;
 		esac
 		shift
 	done
-	if test "$OUTPUT" = ""; then
-		OUTPUT="-"
-	fi
-	if test "$DIR" = ""; then
-		echo "Directory not selected" | msg -2 --foreground "Brown"
-		return 1
-	fi
-	echo "Generating initramfs [$DIR]" | msg -2
-	hi
-	if test "$IS_STANDALONE" = ""; then
-		echo "Creating system directories" | msg -2
-		hi
-		for dir in "/proc" "/sys" "/dev" "/run" "/sbin" "/bin" "/etc" "/usr/sbin" "/usr/bin" "/mnt" "/tmp"; do
-			mkdir -p $DIR$dir 2>/dev/null
-			case "$?" in
-				"0") echo "$dir" | msg -2 --foreground "Light Blue" ;;
-				*) echo "$dir" | msg -2 --foreground "Light Red" --highlight ;;
-			esac
-		done
-		lo
-		#
-		# TODO replace it with mknod
-		#
-		echo "Copying devices" | msg -2
-		hi
-		for dev in "console" "tty" "tty1" "null"; do
-			cp -a "/dev/$dev" "$DIR/dev/$dev" 2>/dev/null
-			case "$?" in
-				"0") echo "/dev/$dev" | msg -2 --foreground "Light Blue" ;;
-				*) echo "/dev/$dev" | msg -2 --foreground "Light Red" --highlight ;;
-			esac
-		done
-		lo
-		echo "Copying system files" | msg -2
-		hi
-		for bin in $SYSTEMWIDE_BINARIES; do
-			which "$bin" 1>/dev/null 2>/dev/null
-			CODE="$?"
-			case "$CODE" in
-				"0") echo "$bin" | msg -2 --foreground "Light Blue" ;;
-				*) echo "$bin" | msg -2 --foreground "Light Red" --highlight ;;
-			esac
-			deps=""
-			for dep in $(lddtree $(which $bin 2>/dev/null)); do
-				deps="$deps $dep"
-				if test -f "$DIR$dep"; then
-					continue
-				fi
-				install -D "$dep" "$DIR$dep" 2>/dev/null
-				CODE="$?"
-			done
-			hi
-			for dep in $(echo $deps | tr ' ' '\n' | sort | uniq | tr '\n' ' '); do
-				case "$CODE" in
-					"0") echo "$dep" | msg -2 --foreground "Purple" ;;
-					*) echo "$dep" | msg -2 --foreground "Light Red" --highlight ;;
-				esac
-			done
-			lo
-		done
-		lo
-		echo "Creating init" | msg -2
-		hi
-		echo "/init" | msg -2 --foreground "Light Blue"
-		initramfs_init "$DIR/init"
-		case "$?" in
-			"0") ;;
-			*) echo "Failure [$CODE]" | msg -2 --foreground "Brown" ;;
-		esac
-		lo
-	fi
-	if test "$STR_OVERLAY"; then
-		mkdir -p "$DIR/media/system"
-		overlay --destination "$DIR/media/system" $STR_OVERLAY $STR_FORMAT
-	fi
-	echo "Creating initramfs [$OUTPUT]" | msg -2
-	cd "$DIR" 2>/dev/null
-	case "$OUTPUT" in
-		""|"-")
-			find . -print0 | cpio --create --format "newc" --null --quiet 2>/dev/null
-			CODE="$?"
-			;;
-		*)
-			find . -print0 | cpio --create --format "newc" --null --quiet > "$OUTPUT" 2>/dev/null
-			CODE="$?"
-			;;
-	esac
-	hi
-	case "$CODE" in
-		"0") echo "Success" | msg -2 --foreground "Light Green" ;;
-		*) echo "Error while generating initramfs" | msg -2 --foreground "Brown" --highlight ;;
-	esac
-	lo
-	cd "$OLDPWD" 2>/dev/null
-	echo "Done [$OUTPUT]" | msg -2
-	lo
-	echo "Done [$DIR]" | msg -2
-}
 
-mkbootisofs() {
-	DIR=""
-	ISO=""
-	LOADER_LEGACY_BOOT=""
-	LOADER_EFI=""
-	KERNEL=""
-	INITRD=""
-	BIOS=""
-	UEFI=""
-	PORTABLE=""
-	BOOTABLE=""
-	ISO_9660=""
-	ISO_9660_LABEL=""
-	ISO_9660_RUN=""
-	STR_OVERLAY=""
-	STR_FORMAT=""
-
-	while test "$1"; do
-		case "$1" in
-			"--output") ISO="$(realpath $2)" ; ISO_9660="yes" ; shift ;;
-			"--loader") LOADER_LEGACY_BOOT="$2" ; LOADER_EFI="$2" ; shift ;;
-			"--legacy-boot") LOADER_LEGACY_BOOT="$2" ; shift ;;
-			"--efi") LOADER_EFI="$2" ; shift ;;
-			"--kernel") KERNEL="$2" ; shift ;;
-			"--initrd") INITRD="$2" ; shift ;;
-			"--portable") PORTABLE="yes" ;;
-			"--bootable") BOOTABLE="yes" ;;
-			"--iso-9660") ISO_9660="yes" ;;
-			"--iso-9660-label") ISO_9660_LABEL="$2" ; shift ;;
-			"--overlay") STR_OVERLAY="$STR_OVERLAY --overlay $2" ; shift ;;
-			"--cpio") STR_FORMAT="--format cpio" ;;
-			"--squashfs") STR_FORMAT="--format squashfs" ;;
-			"--squashfs-xz") STR_FORMAT="--format squashfs-xz" ;;
-			"--help")
-				cat <<EOF
-$BOOTY_NAME $BOOTY_VERSION
-Usage: mkbootisofs <directory> [BOOT.ISO] [options]...
-Creates BIOS and/or UEFI compatible bootable images.
-
-  --output < file | device | - >
-
-  --portable,                creates structure of the disk (default)
-  --bootable,                makes bootable device where directory created
-  --iso-9660                 additional outputs ISO
-
-  --overlay < directory >
-
-  --cpio,
-  --squashfs
-
-  --help
-
-Report about bugs & features to $(echo c3Bvb2ZpbmdAdm9nbGVhLm5ldAo= | base64 -d)
-EOF
-exit 0
-				;;
-			"-"*) echo "Unknown option: $1" | msg -2 ;;
-			*)
-				if test "$DIR" = ""; then
-					DIR="$(realpath $1)"
-				elif test "$ISO" = ""; then
-					ISO="$(realpath $1)"
-					ISO_9660="yes"
-				fi
-				;;
-		esac
-		shift
-	done
-	if test "$DIR" = ""; then
-		echo "No working directory selected" | msg -2 --foreground "Brown"
-		return 1
-	fi
-	if test "$ISO_9660" = "yes"; then
-		if xorrisofs --version 1>/dev/null 2>/dev/null; then
-			ISO_9660_RUN="xorrisofs"
-		fi
-		if genisoimage --version 1>/dev/null 2>/dev/null; then
-			ISO_9660_RUN="genisoimage"
-		fi
-		if test "$ISO_9660_RUN" = ""; then
-			echo "None of cdrkit, xorriso/xorrisofs or mkisofs found" | msg -2 --foreground "Brown"
+	if test "$INSTALL_PATH"; then
+		if test -d "$INSTALL_PATH"; then
+			ROOT="$(realpath $INSTALL_PATH)"
+		else
+			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
 			return 1
 		fi
+	else
+		ROOT="$(mktemp --directory --quiet ramdisk-XXXXXXXXXX)"
+		ROOT="$(realpath $ROOT)"
 	fi
-	for dir in "/usr/share/syslinux" "/usr/lib/syslinux/bios" "$SYSLINUX_PATH"; do
-		if test -f "$dir/mbr.bin"; then
-			SYSLINUX_BIOS_MBR="$dir/mbr.bin"
-		fi
-		if test -f "$dir/gptmbr.bin"; then
-			SYSLINUX_BIOS_GPTMBR="$dir/gptmbr.bin"
-		fi
-		if test -f "$dir/isolinux.bin"; then
-			SYSLINUX_BIOS_ISOLINUX="$dir/isolinux.bin"
-		fi
-		if test -f "$dir/ldlinux.c32"; then
-			SYSLINUX_BIOS_LDLINUX="$dir/ldlinux.c32"
-		fi
-	done
-	for dir in "/usr/share/syslinux/efi64" "/usr/lib/syslinux/efi64" "$SYSLINUX_PATH"; do
-		if test -f "$dir/syslinux.efi"; then
-			SYSLINUX_UEFI_EFIBOOT="$dir/syslinux.efi"
-		fi
-		if test -f "$dir/ldlinux.e64"; then
-			SYSLINUX_UEFI_LDLINUX="$dir/ldlinux.e64"
-		fi
-	done
-	for dir in "/usr/lib/grub" "/lib/grub" "$GRUB_PATH"; do
-		if test -d "$dir/i386-pc"; then
-			GRUB_PATH="$dir"
-		fi
-	done
-	case "$LOADER_LEGACY_BOOT" in
-		"grub2"|"GRUB2") LOADER_LEGACY_BOOT="GRUB2" ;;
-		"syslinux"|"SYSLINUX") LOADER_LEGACY_BOOT="SYSLINUX" ;;
-		?*) echo "Unknown legacy boot loader: $LOADER_LEGACY_BOOT" | msg -2 --foreground "Brown" ; return 1 ;;
-	esac
-	case "$LOADER_EFI" in
-		"grub2"|"GRUB2") LOADER_EFI="GRUB2" ;;
-		"syslinux"|"SYSLINUX") LOADER_EFI="SYSLINUX" ;;
-		?*) echo "Unknown efi loader: $LOADER_LEGACY_BOOT" | msg -2 --foreground "Brown" ; return 1 ;;
-	esac
-	echo "Creating bootable filesystem [$DIR]" | msg -2
-	hi
-	if test "$BOOTABLE" = "yes"; then
-		DEV="$(df $DIR | tail -n 1 | tr -s " " | cut -d " " -f 1 | sed -r "s:[0-9]+\$::" | sed -r "s:([0-9])[a-z]+\$:\\1:i")"
-		TYP="$(fdisk -l $DEV | grep Disklabel\ type: | cut -d " " -f 3)"
-		echo "Creating bootable device [$DEV]" | msg -2
-		hi
-		#
-		# FIXME: syslinux legacy boot on gpt is broken
-		# NOTABUG: grub2 requires "BIOS boot" partition
-		#
-		if test "$LOADER_LEGACY_BOOT" = "SYSLINUX"; then
-			case "$TYP" in
-				"dos") SYSLINUX_MBR="$SYSLINUX_BIOS_MBR" ;;
-				"gpt") SYSLINUX_MBR="$SYSLINUX_BIOS_GPTMBR" ;;
-				*) SYSLINUX_MBR="$SYSLINUX_BIOS_MBR" ;;
-			esac
-			echo "Installing syslinux as legacy boot loader" | msg -2 --foreground "Light Blue"
-			hi
-			mkdir -p "$DIR/efi/boot"
-			cp "/usr/share/booty/syslinux/syslinux.cfg" "$DIR/efi/boot/syslinux.cfg"
-			extlinux --install "$DIR/efi/boot" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
-			cat "$SYSLINUX_MBR" > "$DEV"
-			lo
-		fi
-		if test "$LOADER_EFI" = "SYSLINUX"; then
-			echo "Installing syslinux as efi loader" | msg -2 --foreground "Light Blue"
-			mkdir -p "$DIR/efi/boot"
-			cp "/usr/share/booty/syslinux/syslinux.cfg" "$DIR/efi/boot/syslinux.cfg"
-			cp "$SYSLINUX_UEFI_EFIBOOT" "$DIR/efi/boot/bootx64.efi"
-			cp "$SYSLINUX_UEFI_LDLINUX" "$DIR/efi/boot/"
-		fi
-		if test "$LOADER_LEGACY_BOOT" = "GRUB2"; then
-			echo "Installing grub2 as legacy boot loader" | msg -2 --foreground "Light Blue"
-			hi
-			mkdir -p "$DIR/boot/grub"
-			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
-			grub-install "$DEV"			\
-				--boot-directory="$DIR/boot"	\
-				--target="i386-pc"		\
-				--recheck 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
-			lo
-		fi
-		if test "$LOADER_EFI" = "GRUB2"; then
-			echo "Installing grub2 as efi loader" | msg -2 --foreground "Light Blue"
-			hi
-			mkdir -p "$DIR/boot/grub"
-			cp "/usr/share/booty/grub/grub.cfg" "$DIR/boot/grub/grub.cfg"
-			grub-install				\
-				--boot-directory="$DIR/boot"	\
-				--target="x86_64-efi"		\
-				--removable			\
-				--efi-directory="$DIR"		\
-				--recheck 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
-			lo
-		fi
-		lo
-		echo "Done [$DEV]" | msg -2
+
+	if test "$IMAGE"; then
+		IMAGE="$(realpath $IMAGE)"
+	else
+		echo "Image not specified, add --image <file> for initramfs image" | sent_message --STDERR
+		return 1
 	fi
-	if test "$STR_OVERLAY"; then
-		mkdir -p "$DIR/system"
-		overlay --destination "$DIR/system" $STR_OVERLAY $STR_FORMAT
-	fi
-	if test "$ISO_9660" = "yes"; then
-		if test "$ISO" = ""; then
-			ISO="-"
-		fi
-		echo "Burning [$ISO]" | msg -2
-		hi
-		if test "$LOADER_LEGACY_BOOT" = "SYSLINUX"; then
-			ISO_9660_LEGACY_BOOT="-b boot/syslinux/isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table"
-			mkdir -p "$DIR/boot/syslinux"
-			cp "/usr/share/booty/syslinux/syslinux.cfg" "$DIR/boot/syslinux/syslinux.cfg"
-			for bin in $SYSLINUX_BIOS_ISOLINUX $SYSLINUX_BIOS_LDLINUX; do
-				cp "$bin" "$DIR/boot/syslinux"
-			done
-		fi
-		if test "$LOADER_EFI" = "SYSLINUX"; then
-			ISO_9660_EFI=""
-			echo "syslinux can't boot iso in efi-mode" | msg -2 --foreground "Light Blue"
-		fi
-		if test "$LOADER_LEGACY_BOOT" = "GRUB2"; then
-			ISO_9660_LEGACY_BOOT="-b boot/grub/bios.img -no-emul-boot -boot-load-size 4 -boot-info-table"
-			mkdir -p "$DIR/boot/grub"
-			mkdir -p "$DIR/boot/grub/i386-pc"
-			cp -a "$GRUB_PATH/i386-pc/"*".mod" "$DIR/boot/grub/i386-pc"
-			cp -a "$GRUB_PATH/i386-pc/"*".lst" "$DIR/boot/grub/i386-pc"
-			echo 'search --file --no-floppy --set root /boot/vmlinuz' > "$DIR/boot/grub/grub.cfg"
-			grub-mkimage \
-				--config="$DIR/boot/grub/grub.cfg" \
-				--output="$DIR/boot/grub/core.img" \
-				--format="i386-pc" \
-				--prefix="/boot/grub" \
-				biosdisk iso9660 normal search search_fs_file part_msdos part_gpt fat
-			cat "$GRUB_PATH/i386-pc/cdboot.img" "$DIR/boot/grub/core.img" > $DIR/boot/grub/bios.img
-			cp -r "/usr/share/booty/grub" "$DIR/boot"
-		fi
-		if test "$LOADER_EFI" = "GRUB2"; then
-			ISO_9660_EFI="-eltorito-alt-boot -e efi/boot/floppy.img -no-emul-boot"
-			mkdir -p "$DIR/efi/boot"
-			mkdir -p "$DIR/boot/grub"
-			mkdir -p "$DIR/boot/grub/x86_64-efi"
-			mkdir -p "$DIR/boot/grub/i386-efi"
-			cp -a "$GRUB_PATH/x86_64-efi/"*".mod" "$DIR/boot/grub/x86_64-efi"
-			cp -a "$GRUB_PATH/x86_64-efi/"*".lst" "$DIR/boot/grub/x86_64-efi"
-			cp -a "$GRUB_PATH/i386-efi/"*".mod" "$DIR/boot/grub/i386-efi"
-			cp -a "$GRUB_PATH/i386-efi/"*".lst" "$DIR/boot/grub/i386-efi"
-			echo 'search --file --no-floppy --set root /boot/vmlinuz' > "$DIR/boot/grub/grub.cfg"
-			grub-mkimage \
-				--config="$DIR/boot/grub/grub.cfg" \
-				--output="$DIR/efi/boot/bootx64.efi" \
-				--format="x86_64-efi" \
-				--prefix="/boot/grub" \
-				iso9660 normal search search_fs_file part_msdos part_gpt fat
-			grub-mkimage \
-				--config="$DIR/boot/grub/grub.cfg" \
-				--output="$DIR/efi/boot/bootia32.efi" \
-				--format="i386-efi" \
-				--prefix="/boot/grub" \
-				iso9660 normal search search_fs_file part_msdos part_gpt fat
-			mkdosfs -C -n "MS-DOS" "$DIR/efi/boot/floppy.img" 1440 1>/dev/null
-			mount -o loop "$DIR/efi/boot/floppy.img" "$DIR/boot"
-			mkdir -p "$DIR/boot/efi/boot"
-			cp "$DIR/efi/boot/bootx64.efi" "$DIR/boot/efi/boot"
-			cp "$DIR/efi/boot/bootia32.efi" "$DIR/boot/efi/boot"
-			umount "$DIR/boot"
-			cp -r "/usr/share/booty/grub" "$DIR/boot"
-		fi
-		if test "$ISO_9660_RUN" = "genisoimage"; then
-			echo "Creating iso image using genisoimage" | msg -2 --foreground "Light Blue"
-			hi
-			genisoimage -v -J -r -V "$ISO_9660_LABEL" -A "$ISO_9660_LABEL" \
-				-input-charset "utf-8" \
-				$ISO_9660_LEGACY_BOOT \
-				$ISO_9660_EFI \
-				-o "$ISO" "$DIR" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
-			CODE="$?"
-			lo
-		fi
-		if test "$ISO_9660_RUN" = "xorrisofs"; then
-			echo "Creating iso image using xorrisofs" | msg -2 --foreground "Light Blue"
-			hi
-			xorrisofs -v -J -r -V "$ISO_9660_LABEL" -A "$ISO_9660_LABEL" \
-				$ISO_9660_LEGACY_BOOT \
-				$ISO_9660_EFI \
-				-o "$ISO" "$DIR" 2>&1 | msg -2 --foreground "Light Cyan" --background "Light Blue"
-			CODE="$?"
-			lo
-		fi
-		if test "$LOADER_LEGACY_BOOT" = "SYSLINUX"; then
-			if test "$ISO_9660_EFI"; then
-				isohybrid --uefi "$ISO"
-			else
-				isohybrid "$ISO"
-			fi
-		fi
-		if test "$CODE"; then
-			case "$CODE" in
-				"0") echo "Success" | msg -2 --foreground "Light Green" ;;
-				*) echo "Failure [$CODE]" | msg -2 --foreground "Brown" ;;
-			esac
-		fi
-		lo
-		echo "Done [$ISO]" | msg -2
-	fi
-	lo
-	echo "Done [$DIR]" | msg -2
+
+	ramdisk_make_directories "$ROOT"
+
+	ramdisk_make_devices "$ROOT"
+
+	ramdisk_make_binaries "$ROOT"
+
+	ramdisk_init_script "$ROOT"
+
+	cd "$ROOT"
+
+	do_export > "$IMAGE"
+	
+	cd "$OLDPWD"
+
+	return 0
 }
 
-exportroot() {
-	CODE=""
-	DIR=""
-	while test "$1"; do
-		case "$1" in
-			*)
-				if test "$DIR" = ""; then
-					DIR="$1"
-				fi
-				;;
-		esac
-		shift
-	done
-	if test -d "$DIR"; then
-		echo "Export chroot [$DIR]" | msg -2
-		hi
-		cd "$DIR"
-		find . -print0 | cpio --create --format "newc" --null --quiet 2>/dev/null
-		CODE="$?"
-		case "$CODE" in
-			"0")
-				echo "Export success" | msg -2 --foreground "Light Green"
-				;;
-			*)
-				echo "Export failed" | msg -2 msg -2 --foreground "Brown"
-				;;
-		esac
-		cd "$OLDPWD"
-		lo
-		echo "Done [$DIR]" | msg -2
-	else
-		echo "No such directory [$DIR] for export" | msg -2 --foreground "Brown"
-	fi
-	return "$CODE"
+ramdisk_init_script() {
+	cat >> "$1/init" <<"EOF"
+#! /usr/bin/env sh
+
+exec sh
+
+# End of file
+EOF
+
+	chmod +x "$1/init"
 }
 
-importroot() {
-	CODE=""
-	DIR=""
-	while test "$1"; do
-		case "$1" in
-			*)
-				if test "$DIR" = ""; then
-					DIR="$1"
-				fi
-				;;
-		esac
-		shift
+ramdisk_make_directories() {
+	for dir in "/proc" "/sys" "/dev" "/run" "/sbin" "/bin" "/etc" "/usr/sbin" "/usr/bin" "/mnt" "/tmp"; do
+		mkdir -p "$1/$dir" || return 1
 	done
-	if test -d "$DIR"; then
-		echo "Import chroot [$DIR]" | msg -2
-		hi
-		cd "$DIR"
-		cpio --extract --make-directories --format "newc" --quiet 1>/dev/null 2>/dev/null
-		CODE="$?"
-		case "$CODE" in
-			"0")
-				echo "Import success" | msg -2 --foreground "Light Green"
-				;;
-			*)
-				echo "Import failed [$CODE]" | msg -2 --foreground "Brown"
-				;;
-		esac
-		cd "$OLDPWD"
-		lo
-		echo "Done [$DIR]" | msg -2
-	else
-		echo "No such directory [$DIR] for import" | msg -2 --foreground "Brown"
-	fi
-	return "$CODE"
+	
+	unset dir
+	
+	return 0
+}
+
+ramdisk_make_devices() {
+	for dev in "console" "tty" "tty1" "null"; do
+		cp -a "/dev/$dev" "$1/dev/$dev" || return 1
+	done
+
+	return 0
 }
 
 lddtree() {
 	if test "$1" = ""; then
 		return 0
 	fi
+	
 	echo "$1"
+	
 	for dep in $(ldd "$1" | awk 'BEGIN{ORS="\n"}$1~/^\//{print $1}$3~/^\//{print $3}'); do
 		lddtree "$dep"
 	done
+	
+	unset dep
+}
+
+ramdisk_make_binaries() {
+	for exe in "sh" "env" "switch_root" "mount" "umount" "mkdir" "rmdir" "cp" "mv" "rm" "mknod" "cpio" "sleep"; do
+		LOCATE_EXE="$(which $exe)"
+
+		if test "$LOCATE_EXE"; then
+			LOCATE_DEP=""
+
+			for dep in $(lddtree $LOCATE_EXE); do
+				LOCATE_DEP="$LOCATE_DEP $dep"
+
+				if test -f "$1/$dep"; then
+					continue
+				fi
+
+				install -D "$dep" "$1/$dep" || return 1
+			done
+
+			unset dep
+		fi
+	done
+
+	return 0
+}
+
+#
+# Linux Section: Download & Build
+#
+
+download() {
+	URL="$1"
+	DIRECTORY="$2"
+	FILE="$3"
+	APPEND=""
+
+	if test -f "$DIRECTORY/$FILE.part"; then
+		APPEND="--continue"
+	fi
+
+	wget --timeout 5 --output-document="$DIRECTORY/$FILE.part" $APPEND --quiet "$URL" || return 1
+
+	mv "$DIRECTORY/$FILE.part" "$DIRECTORY/$FILE" || return 1
+
+	unset URL
+	unset DIRECTORY
+	unset FILE
+	unset APPEND
+
+	return 0
+}
+
+extract() {
+	ROOT="$1"
+	DIRECTORY="$2"
+	FILE="$3"
+
+	tar --get --file="$DIRECTORY/$FILE" --directory="$ROOT" || return 1
+
+	unset ROOT
+	unset DIRECTORY
+	unset FILE
+
+	return 0
+}
+
+linux() {
+	KERNEL_NAME=""
+	KERNEL_VERSION=""
+	KERNEL_RELEASE=""
+	CONFIG_FILE=""
+	INSTALL_PATH=""
+	FORCE=""
+	CACHE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--kernel-name") KERNEL_NAME="$2" ; shift ;;
+			"--kernel-version") KERNEL_VERSION="$2" ; shift ;;
+			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
+			"--config-file") CONFIG_FILE="$2" ; shift ;;
+			"--install-path") INSTALL_PATH="$2" ; shift ;;
+			"--force") FORCE="+" ;;
+			"--cache") CACHE="$2" ; shift ;;
+			"-"*)
+				echo "invalid option $1" | sent_message
+				;;
+			*)
+				if test "$KERNEL_VERSION" = ""; then
+					KERNEL_VERSION="$1"
+				elif test "$KERNEL_RELEASE" = ""; then
+					KERNEL_RELEASE="$1"
+				fi
+				;;
+		esac
+		shift
+	done
+
+	if test "$KERNEL_NAME" = ""; then
+		KERNEL_NAME="linux"
+	fi
+
+	if test "$KERNEL_VERSION" = ""; then
+		KERNEL_VERSION=""
+	fi
+
+	if test "$KERNEL_RELEASE" = ""; then
+		KERNEL_RELEASE="1"
+	fi
+
+	if test "$FORCE"; then
+		__FORCE_DOWNLOAD="--force-download"
+		__FORCE_REBUILD="--force-rebuild"
+	else
+		__FORCE_DOWNLOAD=""
+		__FORCE_REBUILD=""
+	fi
+
+	echo "Looking up for $KERNEL_NAME" | sent_message
+
+	linux_via_http "$KERNEL_VERSION"           \
+		$__FORCE_DOWNLOAD                  \
+		--kernel-name "$KERNEL_NAME"       \
+		--kernel-version "$KERNEL_VERSION" \
+		--kernel-release "$KERNEL_RELEASE" \
+		--cache "$CACHE"
+
+	if test -d "$KERNEL_SOURCE"; then
+
+		linux_build "$KERNEL_SOURCE"               \
+			$__FORCE_REBUILD                   \
+			--kernel-name "$KERNEL_NAME"       \
+			--kernel-version "$KERNEL_VERSION" \
+			--kernel-release "$KERNEL_RELEASE" \
+			--config-file "$CONFIG_FILE"       \
+			--install-path "$INSTALL_PATH"     \
+			--cache "$CACHE"
+
+	else
+
+		return 1
+
+	fi
+
+	if test -d "$INSTALL_ROOT"; then
+
+		echo ...
+
+	fi
+
+	return 0
+}
+
+linux_build() {
+	KERNEL_NAME=""
+	KERNEL_VERSION=""
+	KERNEL_RELEASE=""
+	KERNEL_SOURCE=""
+	CONFIG_FILE=""
+	INSTALL_PATH=""
+	FORCE_REBUILD=""
+	CACHE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--kernel-name") KERNEL_NAME="$2" ; shift ;;
+			"--kernel-version") KERNEL_VERSION="$2" ; shift ;;
+			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
+			"--config-file") CONFIG_FILE="$2" ; shift ;;
+			"--install-path") INSTALL_PATH="$2" ; shift ;;
+			"--cache") CACHE="$2" ; shift ;;
+			"--force-rebuild") FORCE_REBUILD="+" ;;
+			"-"*) echo "invalid option $1" ;;
+			*)
+				if test "$KERNEL_SOURCE" = ""; then
+					KERNEL_SOURCE="$1"
+				fi
+				;;
+		esac
+		shift
+	done
+
+	if test "$INSTALL_PATH"; then
+		if test -d "$INSTALL_PATH"; then
+			ROOT="$(realpath $INSTALL_PATH)"
+		else
+			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
+			return 1
+		fi
+	else
+		ROOT="$(mktemp --directory --quiet root-XXXXXXXXXX)"
+		ROOT="$(realpath $ROOT)"
+	fi
+
+	echo "Build [$KERNEL_SOURCE]" | sent_message
+
+	cd "$KERNEL_SOURCE"
+
+	make allnoconfig
+
+	make -j $(($(nproc) + 1))
+
+	install -D "arch/x86/boot/bzImage" "$ROOT/boot/bzImage"
+	
+	echo "$KERNEL_NAME $KERNEL_VERSION installed [$ROOT]" | sent_message
+
+	return 0
+}
+
+linux_via_git() {
+	return 255
+}
+
+linux_via_http() {
+	KERNEL_NAME=""
+	KERNEL_VERSION=""
+	KERNEL_RELEASE=""
+	KERNEL_SOURCE=""
+	SOURCE_DIRECTORY=""
+	FORCE_DOWNLOAD=""
+	CACHE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--kernel-name") KERNEL_NAME="$2" ; shift ;;
+			"--kernel-version") KERNEL_VERSION="$2" ; shift ;;
+			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
+			"--source-directory"|"-s") SOURCE_DIRECTORY="$2" ; shift ;;
+			"--force-download"|"-f") FORCE_DOWNLOAD="yes" ;;
+			"--cache"|"-c") CACHE="$2" ; shift ;;
+			"-"*)
+				echo "invalid option $1"
+				return 1
+				;;
+			*)
+				if test "$KERNEL_VERSION" = ""; then
+					KERNEL_VERSION="$1"
+				fi
+				;;
+		esac
+		shift
+	done
+
+	if test "$KERNEL_VERSION" = ""; then
+		KERNEL_VERSION=$(wget --timeout 5 --output-document - --quiet www.kernel.org | grep -A 1 latest_link)
+		KERNEL_VERSION=${KERNEL_VERSION##*.tar.xz\">}
+		KERNEL_VERSION=${KERNEL_VERSION%</a>*}
+	else
+		KERNEL_VERSION="$KERNEL_VERSION"
+	fi
+
+	case "$KERNEL_VERSION" in
+		[0-9]*.[0-9]*.0) KERNEL_VERSION="${KERNEL_VERSION%.*}" ;;
+		[0-9]*.[0-9]*.[0-9]*) ;;
+		*)
+			echo "kernel.org was hacked or invalid version: $KERNEL_VERSION"
+			return 1
+			;;
+	esac
+
+	if test -d "$SOURCE_DIRECTORY"; then
+		echo noop
+	else
+		SOURCE_DIRECTORY="$(pwd)"
+	fi
+
+	LOCAL_DIRECTORY="$SOURCE_DIRECTORY"
+	LOCAL_FILE="linux-$KERNEL_VERSION.tar.xz"
+
+	REMOTE_DIRECTORY="/pub/linux/kernel/v${KERNEL_VERSION%%.*}.x"
+	REMOTE_FILE="linux-$KERNEL_VERSION.tar.xz"
+
+	URL="https://cdn.kernel.org$REMOTE_DIRECTORY/$REMOTE_FILE"
+	KERNEL_SOURCE="$LOCAL_DIRECTORY/linux-$KERNEL_VERSION"
+
+	if test "$FORCE_DOWNLOAD"; then
+
+		if test -f "$LOCAL_DIRECTORY/$LOCAL_FILE"; then
+			rm -r -f "$LOCAL_DIRECTORY/$LOCAL_FILE"
+		fi
+
+		if test -f "$LOCAL_DIRECTORY/$LOCAL_FILE.part"; then
+			rm -r -f "$LOCAL_DIRECTORY/$LOCAL_FILE.part"
+		fi
+
+		if test -d "$KERNEL_SOURCE"; then
+			rm -r -f "$KERNEL_SOURCE"
+		fi
+
+		if test -d "$CACHE"; then
+			rm -r -f "$CACHE/$LOCAL_FILE"
+		fi
+
+	fi
+
+	if test -d "$KERNEL_SOURCE"; then
+
+		echo "Source [$KERNEL_SOURCE]" | sent_message
+
+	elif test -f "$CACHE/$LOCAL_FILE"; then
+
+		echo "Extracting... [$CACHE/$LOCAL_FILE]" | sent_message
+
+		extract "$LOCAL_DIRECTORY" "$CACHE" "$LOCAL_FILE" || return 1
+
+		echo "Source [$KERNEL_SOURCE]" | sent_message
+
+	else
+
+		echo "Downloading... [$URL]" | sent_message
+
+		download "$URL" "$LOCAL_DIRECTORY" "$LOCAL_FILE" || return 1
+
+		echo "Extracting... [$LOCAL_DIRECTORY/$LOCAL_FILE]" | sent_message
+
+		extract "$LOCAL_DIRECTORY" "$LOCAL_DIRECTORY" "$LOCAL_FILE" || return 1
+
+		if test -d "$CACHE"; then
+
+			echo "Caching... [$CACHE/$LOCAL_FILE]" | sent_message
+
+			cp "$LOCAL_DIRECTORY/$LOCAL_FILE" "$CACHE/$LOCAL_FILE"
+
+		fi
+
+		echo "Source [$KERNEL_SOURCE]" | sent_message
+
+	fi
+
+	return 0
+}
+
+#
+# Main Section: Application Data
+#
+
+booty() {
+	PROFILE=""
+	CACHE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"-p"|"--profile") PROFILE="$2" ; shift ;;
+			"-c"|"--cache") CACHE="$2" ; shift ;;
+			"-"*)
+				echo "invalid option $1" | sent_message
+				return 1
+				;;
+			*)
+				echo "invalid option $1" | sent_message
+				return 1
+				;;
+		esac
+	done
+
+	# set $TMPDIR by `mktemp` for future use
+	TMPDIR="$(pwd)"
+	TMPDIR="$(mktemp --directory --quiet $BOOTY_NAME-XXX)"
+	TMPDIR="$(realpath $TMPDIR)"
+
+	ROOT="$(mktemp --directory --quiet root-XXXXXXXXXX)"
+	BOOT="$(mktemp --directory --quiet boot-XXXXXXXXXX)"
+
+	linux --install-path "$ROOT"
+
+	ramdisk --install-path "$ROOT" --image "$ROOT/boot/INITRD.IMG"
+
+	mv "$ROOT/boot" "$BOOT/boot"
+
+	boot --install-path "$BOOT" --image "$TMPDIR/BOOT-$(uname -m).ISO"
+
+	echo rm -r -f "$TMPDIR"
 }
 
 main() {
-	case "$(basename $0)" in
-		"mkbootstrap") mkbootstrap "$@" ;;
-		"mkinitramfs") mkinitramfs "$@" ;;
-		"mkbootisofs") mkbootisofs "$@" ;;
-		"exportroot") exportroot "$@" ;;
-		"importroot") importroot "$@" ;;
+	case "$1" in
+		"import") shift ; do_import $@ ;;
+		"export") shift ; do_export $@ ;;
+		"linux") shift ; linux $@ ;;
+		"linux_via_http") shift ; linux_via_http $@ ;;
+		"linux_via_git") shift ; linux_via_git $@ ;;
+		"linux_build") shift ; linux_build $@ ;;
+		"ramdisk") shift ; ramdisk $@ ;;
+		*) booty $@ ;;
 	esac
 }
 
-hi() {
-	return 0
+show_help() {
+	cat <<EOF
+$BOOTY_NAME $BOOTY_VERSION
+
+Usage: booty <directory> [directory]... <bootable image> [options]...
+
+Creates BIOS and/or UEFI compatible bootable images
+with operating system from specified directory.
+
+  -p, --profile <profile>    Creates bootable image with pre-defined options
+
+                             Profiles:
+                               initramfs [default]
+                               overlayfs
+
+  -c, --cache <directory>    Storage for data like a binary kernels, sources
+                             and so on to prevent download it and building
+                             the same things again and again
+
+  --kernel-version <version>,    Select kernel version to build and/or label
+  --kernel-release <release>     for cache data.
+
+  -v, --verbose              Verbosity level can be increased by multiples -vvvvv
+
+  --help                     Show this help
+
+Report about bugs & features to $(echo c3Bvb2ZpbmdAdm9nbGVhLm5ldAo= | base64 -d)
+EOF
 }
 
-lo() {
-	return 0
-}
-
-msg() {
-	while read -r input; do
-		echo "$input" >&2
-	done
-}
-
-for BOOTY_CONF in "/etc/booty/booty.conf"; do
-	if test -f "$BOOTY_CONF"; then
-		. "$BOOTY_CONF" || exit 1
-	fi
-done
+trap "do_panic" HUP INT QUIT TERM
 
 readonly BOOTY_NAME="booty"
-readonly BOOTY_VERSION="1.4"
+readonly BOOTY_VERSION="2.0"
+
+unset TMPDIR
 
 main "$@"
