@@ -8,19 +8,15 @@ do_panic() {
 	do_error ""
 	do_error "Interrupted"
 
-	if test -d "$TMPDIR"; then
-		rm -r -f "$TMPDIR"
-	fi
-
-	exit 1
-}
-
-do_export() {
-	find . -print0 | cpio --create --format "newc" --null --quiet
+	main_exit 1
 }
 
 do_import() {
 	cpio --extract --make-directories --format "newc" --quiet
+}
+
+do_export() {
+	find . -print0 | cpio --create --format "newc" --null --quiet
 }
 
 sent_message() {
@@ -50,6 +46,296 @@ sent_message() {
 }
 
 #
+# Image Section: Bootable image
+#
+image() {
+	INSTALL_PATH=""
+	IMAGE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--install-path") INSTALL_PATH="$2" ; shift ;;
+			"--image") IMAGE="$2" ; shift ;;
+			"-"*)
+				echo "invalid option $1" | sent_message
+				;;
+			*)
+				if test "$INSTALL_PATH" = ""; then
+					INSTALL_PATH="$1"
+				else
+					break
+				fi
+				;;
+		esac
+		shift
+	done
+
+	if test "$IMAGE"; then
+		IMAGE="$(realpath $IMAGE)"
+	else
+		echo "Image not specified, add --image <file> for initramfs image" | sent_message --STDERR
+		return 1
+	fi
+
+	if test "$INSTALL_PATH"; then
+		if test -d "$INSTALL_PATH"; then
+			INSTALL_PATH="$(realpath $INSTALL_PATH)"
+		else
+			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
+			return 1
+		fi
+	else
+		INSTALL_PATH="$(mktemp --directory --quiet image-XXXXXXXXXX)"
+		INSTALL_PATH="$(realpath $INSTALL_PATH)"
+	fi
+
+	while ! test "$#" = "0"; do
+		SOURCE="${1%%=*}"
+		DESTINATION="${1##*=}"
+		if test -f "$SOURCE"; then
+			if install -D "$SOURCE" "$INSTALL_PATH/$DESTINATION"; then
+				echo "[$SOURCE] [$INSTALL_PATH/$DESTINATION]" | sent_message
+			fi
+		fi
+		shift
+	done
+
+	echo "Install bootloader" | sent_message
+
+	image_install_bootloader "$INSTALL_PATH"
+
+	echo "Generate ISO 9660" | sent_message
+
+	image_generate_iso9660 "$INSTALL_PATH" "$IMAGE"
+}
+
+image_install_bootloader() {
+	INSTALL_PATH="$1"
+
+	image_search_bootloader
+
+	image_install_grub2 "$INSTALL_PATH"
+}
+
+image_install_grub2() {
+	INSTALL_PATH="$1"
+
+	install -d "$INSTALL_PATH/boot"
+	install -d "$INSTALL_PATH/boot/grub"
+
+	cat > "$INSTALL_PATH/boot/grub/grub.cfg" <<EOF
+search --file --no-floppy --set root /boot/vmlinuz
+EOF
+
+	install -d "$INSTALL_PATH/boot/grub/i386-pc"
+
+	cp -a "$GRUB_BIOS_DATA/"*".mod" "$INSTALL_PATH/boot/grub/i386-pc"
+	cp -a "$GRUB_BIOS_DATA/"*".lst" "$INSTALL_PATH/boot/grub/i386-pc"
+
+	grub-mkimage                                        \
+		                                            \
+		--config="$INSTALL_PATH/boot/grub/grub.cfg" \
+		--output="$INSTALL_PATH/boot/grub/core.img" \
+		--format="i386-pc"                          \
+		--prefix="/boot/grub"                       \
+		                                            \
+		"biosdisk" "iso9660" "normal" "search"      \
+		"search_fs_file" "part_msdos" "part_gpt"    \
+		"fat"
+
+	cat "$GRUB_BIOS_DATA/cdboot.img" "$INSTALL_PATH/boot/grub/core.img" > "$INSTALL_PATH/boot/grub/bios.img"
+
+	if ! test "$(id --user)" = "0"; then
+		echo "You must be root to install EFI bootloader" | sent_message
+
+		return 0
+	fi
+
+	install -d "$INSTALL_PATH/efi/boot"
+	install -d "$INSTALL_PATH/boot/grub/i386-efi"
+	install -d "$INSTALL_PATH/boot/grub/x86_64-efi"
+
+	cp -a "$GRUB_EFI_LEGACY_DATA/"*".mod" "$INSTALL_PATH/boot/grub/i386-efi"
+	cp -a "$GRUB_EFI_LEGACY_DATA/"*".lst" "$INSTALL_PATH/boot/grub/i386-efi"
+
+	cp -a "$GRUB_EFI_DATA/"*".mod" "$INSTALL_PATH/boot/grub/x86_64-efi"
+	cp -a "$GRUB_EFI_DATA/"*".lst" "$INSTALL_PATH/boot/grub/x86_64-efi"
+
+	grub-mkimage                                           \
+		                                               \
+		--config="$INSTALL_PATH/boot/grub/grub.cfg"    \
+		--output="$INSTALL_PATH/efi/boot/bootia32.efi" \
+		--format="i386-efi"                            \
+		--prefix="/boot/grub"                          \
+		                                               \
+		"iso9660" "normal" "search" "search_fs_file"   \
+		"part_msdos" "part_gpt" "fat"
+
+	grub-mkimage                                          \
+		                                              \
+		--config="$INSTALL_PATH/boot/grub/grub.cfg"   \
+		--output="$INSTALL_PATH/efi/boot/bootx64.efi" \
+		--format="x86_64-efi"                         \
+		--prefix="/boot/grub"                         \
+		                                              \
+		"iso9660" "normal" "search" "search_fs_file"  \
+		"part_msdos" "part_gpt" "fat"
+
+	mkdosfs -C "$INSTALL_PATH/efi/boot/floppy.img" 1440
+
+	mount -o loop "$INSTALL_PATH/efi/boot/floppy.img" "$INSTALL_PATH/boot"
+	
+	mkdir -p "$INSTALL_PATH/boot/efi/boot"
+	
+	cp "$INSTALL_PATH/efi/boot/bootx64.efi" "$INSTALL_PATH/boot/efi/boot"
+	
+	cp "$INSTALL_PATH/efi/boot/bootia32.efi" "$INSTALL_PATH/boot/efi/boot"
+	
+	umount "$INSTALL_PATH/boot"
+
+	cat > "$INSTALL_PATH/boot/grub/grub.cfg" <<"EOF"
+set default=2
+
+function load_video {
+	if [ x$feature_all_video_module = xy ]; then
+		insmod all_video
+	else
+		insmod efi_gop
+		insmod efi_uga
+		insmod ieee1275_fb
+		insmod vbe
+		insmod vga
+		insmod video_bochs
+		insmod video_cirrus
+	fi
+}
+
+if loadfont "unicode"; then
+	set gfxmode=auto
+	load_video
+	insmod gfxterm
+	if [ -f "$prefix/themes/default/theme.txt" ]; then
+		insmod png
+		set theme=$prefix/themes/default/theme.txt
+	fi
+fi
+terminal_output gfxterm
+
+if [ x$feature_timeout_style = xy ]; then
+	set timeout_style=menu
+	set timeout=3
+else
+	set timeout=3
+fi
+
+menuentry "Run GNU/Linux in Live-mode" {
+	linux /boot/vmlinuz quiet
+	initrd /boot/initrd
+}
+menuentry "Boot using SHMFS (default boot)" {
+	linux /boot/vmlinuz booty.use-shmfs quiet
+	initrd /boot/initrd
+}
+menuentry "Boot using Overlay FS" {
+	linux /boot/vmlinuz booty.use-overlayfs quiet
+	initrd /boot/initrd
+}
+menuentry "Boot using Overlay FS (Copy to RAM and release storage device)" {
+	linux /boot/vmlinuz booty.use-overlayfs booty.copy-to-ram quiet
+	initrd /boot/initrd
+}
+menuentry "Boot using Overlay FS (Try to find /filesystem.squashfs)" {
+	linux /boot/vmlinuz booty.use-overlayfs booty.search-rootfs=/filesystem.squashfs quiet
+	initrd /boot/initrd
+}
+menuentry "Boot using Overlay FS (Use /dev/sda as rootfs)" {
+	linux /boot/vmlinuz booty.use-overlayfs booty.search-rootfs=/dev/sda quiet
+	initrd /boot/initrd
+}
+menuentry "Boot using Overlay FS (Use /dev/sda for data)" {
+	linux /boot/vmlinuz booty.use-overlayfs booty.rootfs-changes=/dev/sda quiet
+	initrd /boot/initrd
+}
+EOF
+}
+
+image_install_syslinux() {
+	# TODO syslinux
+	# FIXME syslinux: legacy boot + gpt is just broken on ~May 2020
+	return 1
+}
+
+image_search_bootloader() {
+	for dir in "/usr/lib/grub" "/lib/grub"; do
+		if test -d "$dir/i386-pc"; then
+			GRUB_BIOS_DATA="$dir/i386-pc"
+		fi
+		if test -d "$dir/i386-efi"; then
+			GRUB_EFI_LEGACY_DATA="$dir/i386-efi"
+		fi
+		if test -d "$dir/x86_64-efi"; then
+			GRUB_EFI_DATA="$dir/x86_64-efi"
+		fi
+	done
+	for dir in "/usr/share/syslinux" "/usr/lib/syslinux/bios"; do
+		if test -f "$dir/mbr.bin"; then
+			SYSLINUX_BIOS_MBR="$dir/mbr.bin"
+		fi
+		if test -f "$dir/gptmbr.bin"; then
+			SYSLINUX_BIOS_GPTMBR="$dir/gptmbr.bin"
+		fi
+		if test -f "$dir/isolinux.bin"; then
+			SYSLINUX_BIOS_ISOLINUX="$dir/isolinux.bin"
+		fi
+		if test -f "$dir/ldlinux.c32"; then
+			SYSLINUX_BIOS_LDLINUX="$dir/ldlinux.c32"
+		fi
+	done
+	for dir in "/usr/share/syslinux/efi64" "/usr/lib/syslinux/efi64"; do
+		if test -f "$dir/syslinux.efi"; then
+			SYSLINUX_UEFI_EFIBOOT="$dir/syslinux.efi"
+		fi
+		if test -f "$dir/ldlinux.e64"; then
+			SYSLINUX_UEFI_LDLINUX="$dir/ldlinux.e64"
+		fi
+	done
+	unset dir
+}
+
+image_generate_iso9660() {
+	INSTALL_PATH="$1"
+	IMAGE="$2"
+	COMMAND=""
+
+	if test "$COMMAND" = ""; then
+		if command -v "xorrisofs"; then
+			COMMAND="xorrisofs"
+		fi
+
+		if command -v "genisoimage"; then
+			COMMAND="genisoimage"
+		fi
+	else
+		echo "Install one: cdrkit, xorriso, mkisofs" | sent_message
+		return 1
+	fi
+
+	if test "$COMMAND" = "genisoimage"; then
+		genisoimage -v -J -r -V "BOOT-$(uname -m)" -A "BOOT-$(uname -m)" \
+			-input-charset "utf-8" \
+			-b "boot/grub/bios.img" -no-emul-boot -boot-load-size 4 -boot-info-table \
+			-eltorito-alt-boot -e "efi/boot/floppy.img" -no-emul-boot \
+			-o "$IMAGE" "$INSTALL_PATH"
+	fi
+
+	if test "$COMMAND" = "xorrisofs"; then
+		# TODO
+		return 1
+	fi
+	return 0
+}
+
+#
 # Initial RAM Disk Section: Build initramfs
 #
 
@@ -73,6 +359,13 @@ ramdisk() {
 		shift
 	done
 
+	if test "$IMAGE"; then
+		IMAGE="$(realpath $IMAGE)"
+	else
+		echo "Image not specified, add --image <file> for initramfs image" | sent_message --STDERR
+		return 1
+	fi
+
 	if test "$INSTALL_PATH"; then
 		if test -d "$INSTALL_PATH"; then
 			ROOT="$(realpath $INSTALL_PATH)"
@@ -85,20 +378,13 @@ ramdisk() {
 		ROOT="$(realpath $ROOT)"
 	fi
 
-	if test "$IMAGE"; then
-		IMAGE="$(realpath $IMAGE)"
-	else
-		echo "Image not specified, add --image <file> for initramfs image" | sent_message --STDERR
-		return 1
-	fi
-
 	ramdisk_make_directories "$ROOT"
 
 	ramdisk_make_devices "$ROOT"
 
 	ramdisk_make_binaries "$ROOT"
 
-	ramdisk_init_script "$ROOT"
+	install -D -m 0755 "/usr/share/booty/init.rc" "$ROOT/init"
 
 	cd "$ROOT"
 
@@ -107,18 +393,6 @@ ramdisk() {
 	cd "$OLDPWD"
 
 	return 0
-}
-
-ramdisk_init_script() {
-	cat >> "$1/init" <<"EOF"
-#! /usr/bin/env sh
-
-exec sh
-
-# End of file
-EOF
-
-	chmod +x "$1/init"
 }
 
 ramdisk_make_directories() {
@@ -208,7 +482,21 @@ extract() {
 	DIRECTORY="$2"
 	FILE="$3"
 
-	tar --get --file="$DIRECTORY/$FILE" --directory="$ROOT" || return 1
+	if ! test -d "$ROOT"; then
+		return 1
+	fi
+
+	if ! test -d "$DIRECTORY"; then
+		return 1
+	fi
+
+	if ! test -f "$DIRECTORY/$FILE"; then
+		return 1
+	fi
+
+	if ! tar --get --file="$DIRECTORY/$FILE" --directory="$ROOT"; then
+		return 1
+	fi
 
 	unset ROOT
 	unset DIRECTORY
@@ -223,8 +511,8 @@ linux() {
 	KERNEL_RELEASE=""
 	CONFIG_FILE=""
 	INSTALL_PATH=""
-	FORCE=""
 	CACHE=""
+	FORCE=""
 
 	while ! test "$#" = "0"; do
 		case "$1" in
@@ -233,10 +521,11 @@ linux() {
 			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
 			"--config-file") CONFIG_FILE="$2" ; shift ;;
 			"--install-path") INSTALL_PATH="$2" ; shift ;;
-			"--force") FORCE="+" ;;
 			"--cache") CACHE="$2" ; shift ;;
+			"--force") FORCE="+" ;;
 			"-"*)
-				echo "invalid option $1" | sent_message
+				echo "invalid option $1" | sent_message --STDERR
+				return 1
 				;;
 			*)
 				if test "$KERNEL_VERSION" = ""; then
@@ -252,19 +541,60 @@ linux() {
 	if test "$KERNEL_NAME" = ""; then
 		KERNEL_NAME="linux"
 	fi
-
 	if test "$KERNEL_VERSION" = ""; then
 		KERNEL_VERSION=""
 	fi
-
 	if test "$KERNEL_RELEASE" = ""; then
 		KERNEL_RELEASE="1"
+	fi
+
+	if test "$CONFIG_FILE"; then
+		if test -f "$CONFIG_FILE"; then
+			CONFIG_FILE="$(realpath $CONFIG_FILE)"
+		else
+			echo "No such file: $CONFIG_FILE" | sent_message --STDERR
+			return 1
+		fi
+	fi
+
+	if test "$CACHE"; then
+		if test -d "$CACHE"; then
+			CACHE="$(realpath $CACHE)"
+		else
+			echo "No such directory: $CACHE" | sent_message --STDERR
+			return 1
+		fi
+	fi
+
+	if test "$INSTALL_PATH"; then
+		if test -d "$INSTALL_PATH"; then
+			INSTALL_PATH="$(realpath $INSTALL_PATH)"
+		else
+			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
+			return 1
+		fi
+	else
+		INSTALL_PATH="$(mktemp --directory --quiet root-XXXXXXXXXX)"
+		INSTALL_PATH="$(realpath $INSTALL_PATH)"
 	fi
 
 	if test "$FORCE"; then
 		__FORCE_DOWNLOAD="--force-download"
 		__FORCE_REBUILD="--force-rebuild"
 	else
+		BUILD="$KERNEL_NAME-$KERNEL_RELEASE#$KERNEL_VERSION.pkg.tar"
+
+		if test -f "$CACHE/$BUILD"; then
+			echo "Cache for $KERNEL_NAME available" | sent_message
+			if extract "$INSTALL_PATH" "$CACHE" "$BUILD"; then
+				echo "Install $KERNEL_NAME from cache" | sent_message
+				return 0
+			else
+				echo "Install $KERNEL_NAME from cache fails, continue" | sent_message
+			fi
+
+		fi
+
 		__FORCE_DOWNLOAD=""
 		__FORCE_REBUILD=""
 	fi
@@ -286,19 +616,20 @@ linux() {
 			--kernel-version "$KERNEL_VERSION" \
 			--kernel-release "$KERNEL_RELEASE" \
 			--config-file "$CONFIG_FILE"       \
-			--install-path "$INSTALL_PATH"     \
-			--cache "$CACHE"
+			--install-path "$INSTALL_PATH"
 
 	else
-
 		return 1
-
 	fi
 
-	if test -d "$INSTALL_ROOT"; then
+	if test -d "$CACHE"; then
+		BUILD="$KERNEL_NAME-$KERNEL_RELEASE#$KERNEL_VERSION.pkg.tar"
 
-		echo ...
-
+		if tar --create --file="$CACHE/$BUILD" --directory="$INSTALL_PATH" .; then
+			echo "Cached [$CACHE/$BUILD]" | sent_message
+		else
+			echo "Cache failed [$CACHE/$BUILD]" | sent_message
+		fi
 	fi
 
 	return 0
@@ -312,7 +643,6 @@ linux_build() {
 	CONFIG_FILE=""
 	INSTALL_PATH=""
 	FORCE_REBUILD=""
-	CACHE=""
 
 	while ! test "$#" = "0"; do
 		case "$1" in
@@ -321,7 +651,6 @@ linux_build() {
 			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
 			"--config-file") CONFIG_FILE="$2" ; shift ;;
 			"--install-path") INSTALL_PATH="$2" ; shift ;;
-			"--cache") CACHE="$2" ; shift ;;
 			"--force-rebuild") FORCE_REBUILD="+" ;;
 			"-"*) echo "invalid option $1" ;;
 			*)
@@ -333,29 +662,27 @@ linux_build() {
 		shift
 	done
 
-	if test "$INSTALL_PATH"; then
-		if test -d "$INSTALL_PATH"; then
-			ROOT="$(realpath $INSTALL_PATH)"
-		else
-			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
-			return 1
-		fi
-	else
-		ROOT="$(mktemp --directory --quiet root-XXXXXXXXXX)"
-		ROOT="$(realpath $ROOT)"
-	fi
-
 	echo "Build [$KERNEL_SOURCE]" | sent_message
 
 	cd "$KERNEL_SOURCE"
 
-	make allnoconfig
+	make defconfig
+
+	make kvm_guest.config
+
+	# SquashFS + OverlayFS
+	scripts/config -e OVERLAY_FS
+
+	scripts/config -e SQUASHFS
+	scripts/config -e SQUASHFS_XZ
+
+	make olddefconfig
 
 	make -j $(($(nproc) + 1))
 
-	install -D "arch/x86/boot/bzImage" "$ROOT/boot/bzImage"
-	
-	echo "$KERNEL_NAME $KERNEL_VERSION installed [$ROOT]" | sent_message
+	install -D "arch/x86/boot/bzImage" "$INSTALL_PATH/boot/bzImage"
+
+	echo "Install $KERNEL_NAME $KERNEL_VERSION [$INSTALL_PATH]" | sent_message
 
 	return 0
 }
@@ -426,25 +753,9 @@ linux_via_http() {
 	URL="https://cdn.kernel.org$REMOTE_DIRECTORY/$REMOTE_FILE"
 	KERNEL_SOURCE="$LOCAL_DIRECTORY/linux-$KERNEL_VERSION"
 
-	if test "$FORCE_DOWNLOAD"; then
-
-		if test -f "$LOCAL_DIRECTORY/$LOCAL_FILE"; then
-			rm -r -f "$LOCAL_DIRECTORY/$LOCAL_FILE"
-		fi
-
-		if test -f "$LOCAL_DIRECTORY/$LOCAL_FILE.part"; then
-			rm -r -f "$LOCAL_DIRECTORY/$LOCAL_FILE.part"
-		fi
-
-		if test -d "$KERNEL_SOURCE"; then
-			rm -r -f "$KERNEL_SOURCE"
-		fi
-
-		if test -d "$CACHE"; then
-			rm -r -f "$CACHE/$LOCAL_FILE"
-		fi
-
-	fi
+	# TODO
+	#if test "$FORCE_DOWNLOAD"; then
+	#fi
 
 	if test -d "$KERNEL_SOURCE"; then
 
@@ -470,7 +781,7 @@ linux_via_http() {
 
 		if test -d "$CACHE"; then
 
-			echo "Caching... [$CACHE/$LOCAL_FILE]" | sent_message
+			echo "Cached... [$CACHE/$LOCAL_FILE]" | sent_message
 
 			cp "$LOCAL_DIRECTORY/$LOCAL_FILE" "$CACHE/$LOCAL_FILE"
 
@@ -487,62 +798,14 @@ linux_via_http() {
 # Main Section: Application Data
 #
 
-booty() {
-	PROFILE=""
-	CACHE=""
-
-	while ! test "$#" = "0"; do
-		case "$1" in
-			"-p"|"--profile") PROFILE="$2" ; shift ;;
-			"-c"|"--cache") CACHE="$2" ; shift ;;
-			"-"*)
-				echo "invalid option $1" | sent_message
-				return 1
-				;;
-			*)
-				echo "invalid option $1" | sent_message
-				return 1
-				;;
-		esac
-	done
-
-	# set $TMPDIR by `mktemp` for future use
-	TMPDIR="$(pwd)"
-	TMPDIR="$(mktemp --directory --quiet $BOOTY_NAME-XXX)"
-	TMPDIR="$(realpath $TMPDIR)"
-
-	ROOT="$(mktemp --directory --quiet root-XXXXXXXXXX)"
-	BOOT="$(mktemp --directory --quiet boot-XXXXXXXXXX)"
-
-	linux --install-path "$ROOT"
-
-	ramdisk --install-path "$ROOT" --image "$ROOT/boot/INITRD.IMG"
-
-	mv "$ROOT/boot" "$BOOT/boot"
-
-	boot --install-path "$BOOT" --image "$TMPDIR/BOOT-$(uname -m).ISO"
-
-	echo rm -r -f "$TMPDIR"
-}
-
-main() {
-	case "$1" in
-		"import") shift ; do_import $@ ;;
-		"export") shift ; do_export $@ ;;
-		"linux") shift ; linux $@ ;;
-		"linux_via_http") shift ; linux_via_http $@ ;;
-		"linux_via_git") shift ; linux_via_git $@ ;;
-		"linux_build") shift ; linux_build $@ ;;
-		"ramdisk") shift ; ramdisk $@ ;;
-		*) booty $@ ;;
-	esac
-}
-
-show_help() {
+main_help() {
 	cat <<EOF
 $BOOTY_NAME $BOOTY_VERSION
 
-Usage: booty <directory> [directory]... <bootable image> [options]...
+Usage: booty [DIRECTORY]
+   or: booty linux [VERSION]
+   or: booty ramdisk
+   or: booty image SOURCE=DESTINATION...
 
 Creates BIOS and/or UEFI compatible bootable images
 with operating system from specified directory.
@@ -557,8 +820,9 @@ with operating system from specified directory.
                              and so on to prevent download it and building
                              the same things again and again
 
-  --kernel-version <version>,    Select kernel version to build and/or label
-  --kernel-release <release>     for cache data.
+  --kernel-name linux,           Select kernel version to build and/or label
+  --kernel-version <version>,    for cache data.
+  --kernel-release <release>     
 
   -v, --verbose              Verbosity level can be increased by multiples -vvvvv
 
@@ -568,11 +832,132 @@ Report about bugs & features to $(echo c3Bvb2ZpbmdAdm9nbGVhLm5ldAo= | base64 -d)
 EOF
 }
 
+main_init() {
+	# set $TMPDIR by `mktemp` for future use
+	TMPDIR="$(pwd)"
+	TMPDIR="$(mktemp --directory --quiet $BOOTY_NAME-XXXXXXXXXX)"
+	TMPDIR="$(realpath $TMPDIR)"
+
+	PROFILE=""
+	CACHE=""
+	BOOT_IMAGE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--profile"|"-p")
+				PROFILE="$2"
+				shift
+				;;
+			"--cache"|"-c")
+				CACHE="$2"
+				shift
+				;;
+			"--help"|"-h")
+				main_help | sent_message --STDOUT
+				return 0
+				;;
+			"-"*)
+				echo "Invalid option: $1" | sent_message --STDERR
+				return 1
+				;;
+			*)
+				if test -d "$1"; then
+					echo "$(realpath $1)" >> "$TMPDIR/fstab"
+				else
+					if test "$BOOT_IMAGE" = ""; then
+						BOOT_IMAGE="$1"
+					else
+						echo "No such directory: $1" | sent_message --STDERR
+						return 1
+					fi
+				fi
+				;;
+		esac
+		shift
+	done
+
+	if test "$BOOT_IMAGE"; then
+		BOOT_IMAGE="$(realpath $BOOT_IMAGE)"
+	else
+		BOOT_IMAGE="$(pwd)/BOOT-$(uname -m).ISO"
+	fi
+
+	if test "$CACHE"; then
+		if test -d "$CACHE"; then
+			CACHE="$(realpath $CACHE)"
+		else
+			echo "No such directory: $CACHE" | sent_message --STDERR
+			return 1
+		fi
+	fi
+
+	case "$PROFILE" in
+		"initramfs") PROFILE="initramfs" ;;
+		"overlayfs") PROFILE="overlayfs" ;;
+		?*)
+			echo "Invalid profile: $1" | sent_message --STDERR
+			return 1
+			;;
+		*) PROFILE="overlayfs" ;;
+	esac
+
+	#if test "$PROFILE" = "initramfs"; then
+	#fi
+
+	if test "$PROFILE" = "overlayfs"; then
+		install -d "$TMPDIR/ramdisk"
+		install -d "$TMPDIR/bootimg"
+
+		linux --install-path "$TMPDIR/ramdisk" --cache "$CACHE"
+
+		ramdisk "$TMPDIR/ramdisk" --image "$TMPDIR/ramdisk.img"
+
+		if test -f "$TMPDIR/fstab"; then
+			ORDER="0"
+			while read -r SOURCE; do
+				ORDER="$(($ORDER + 10))"
+				DESTINATION="$ORDER-$(basename $DIRECTORY)"
+				echo mksquashfs "$SOURCE" "$TMPDIR/bootimg/boot/$DESTINATION" \
+					-b "1048576" \
+					-comp "xz" \
+					-Xdict-size "100%"
+			done < "$TMPDIR/fstab"
+			unset ORDER
+		fi
+
+		image "$TMPDIR/bootimg" --image "$BOOT_IMAGE" \
+			"$TMPDIR/ramdisk/boot/bzImage=boot/vmlinuz" \
+			"$TMPDIR/ramdisk.img=boot/initrd"
+	fi
+}
+
+main_exit() {
+	if test -d "$TMPDIR"; then
+		echo rm -r -f "$TMPDIR"
+	fi
+
+	exit "$1"
+}
+
+main() {
+	case "$1" in
+		"import") shift ; do_import $@ ;;
+		"export") shift ; do_export $@ ;;
+		"linux") shift ; linux $@ ;;
+		"linux_via_http") shift ; linux_via_http $@ ;;
+		"linux_via_git") shift ; linux_via_git $@ ;;
+		"linux_build") shift ; linux_build $@ ;;
+		"ramdisk") shift ; ramdisk $@ ;;
+		*)
+			main_init $@
+			main_exit 0
+			;;
+	esac
+}
+
 trap "do_panic" HUP INT QUIT TERM
 
 readonly BOOTY_NAME="booty"
 readonly BOOTY_VERSION="2.0"
-
-unset TMPDIR
 
 main "$@"
