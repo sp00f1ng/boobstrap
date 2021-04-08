@@ -680,6 +680,8 @@ linux_build() {
 
 	make -j $(($(nproc) + 1))
 
+	make INSTALL_MOD_PATH="$INSTALL_PATH" modules_install
+
 	install -D "arch/x86/boot/bzImage" "$INSTALL_PATH/boot/bzImage"
 
 	echo "Install $KERNEL_NAME $KERNEL_VERSION [$INSTALL_PATH]" | sent_message
@@ -725,8 +727,6 @@ linux_via_http() {
 		KERNEL_VERSION=$(wget --timeout 5 --output-document - --quiet www.kernel.org | grep -A 1 latest_link)
 		KERNEL_VERSION=${KERNEL_VERSION##*.tar.xz\">}
 		KERNEL_VERSION=${KERNEL_VERSION%</a>*}
-	else
-		KERNEL_VERSION="$KERNEL_VERSION"
 	fi
 
 	case "$KERNEL_VERSION" in
