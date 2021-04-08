@@ -461,8 +461,14 @@ download() {
 	FILE="$3"
 	APPEND=""
 
+	if ! test -d "$DIRECTORY"; then
+		return 1
+	fi
+
 	if test -f "$DIRECTORY/$FILE.part"; then
 		APPEND="--continue"
+	elif test -f "$DIRECTORY/$FILE"; then
+		return 1
 	fi
 
 	wget --timeout 5 --output-document="$DIRECTORY/$FILE.part" $APPEND --quiet "$URL" || return 1
@@ -473,16 +479,15 @@ download() {
 	unset DIRECTORY
 	unset FILE
 	unset APPEND
-
 	return 0
 }
 
 extract() {
-	ROOT="$1"
+	DESTINATION="$1"
 	DIRECTORY="$2"
 	FILE="$3"
 
-	if ! test -d "$ROOT"; then
+	if ! test -d "$DESTINATION"; then
 		return 1
 	fi
 
@@ -494,304 +499,265 @@ extract() {
 		return 1
 	fi
 
-	if ! tar --get --file="$DIRECTORY/$FILE" --directory="$ROOT"; then
+	if ! tar --get --file="$DIRECTORY/$FILE" --directory="$DESTINATION"; then
 		return 1
 	fi
 
-	unset ROOT
+	unset DESTINATION
 	unset DIRECTORY
 	unset FILE
-
 	return 0
 }
 
 linux() {
-	KERNEL_NAME=""
-	KERNEL_VERSION=""
-	KERNEL_RELEASE=""
-	CONFIG_FILE=""
-	INSTALL_PATH=""
-	CACHE=""
-	FORCE=""
+	__KERNEL_NAME=""
+	__KERNEL_VERSION=""
+	__KERNEL_RELEASE=""
+	__CONFIG_FILE=""
+	__INSTALL_PATH=""
+	__FORCE=""
 
 	while ! test "$#" = "0"; do
 		case "$1" in
-			"--kernel-name") KERNEL_NAME="$2" ; shift ;;
-			"--kernel-version") KERNEL_VERSION="$2" ; shift ;;
-			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
-			"--config-file") CONFIG_FILE="$2" ; shift ;;
-			"--install-path") INSTALL_PATH="$2" ; shift ;;
-			"--cache") CACHE="$2" ; shift ;;
-			"--force") FORCE="+" ;;
-			"-"*)
-				echo "invalid option $1" | sent_message --STDERR
-				return 1
-				;;
-			*)
-				if test "$KERNEL_VERSION" = ""; then
-					KERNEL_VERSION="$1"
-				elif test "$KERNEL_RELEASE" = ""; then
-					KERNEL_RELEASE="$1"
-				fi
-				;;
+			"--kernel-name") __KERNEL_NAME="$2" ; shift ;;
+			"--kernel-version") __KERNEL_VERSION="$2" ; shift ;;
+			"--kernel-release") __KERNEL_RELEASE="$2" ; shift ;;
+			"--config-file") __CONFIG_FILE="$2" ; shift ;;
+			"--install-path") __INSTALL_PATH="$2" ; shift ;;
+			"--force") __FORCE="+" ;;
+			"-"*) echo "Invalid option: $1" | sent_message --STDERR ; return 1 ;;
+			*) echo "Invalid string: $1" | sent_message --STDERR ; return 1 ;;
 		esac
 		shift
 	done
 
-	if test "$KERNEL_NAME" = ""; then
-		KERNEL_NAME="linux"
-	fi
-	if test "$KERNEL_VERSION" = ""; then
-		KERNEL_VERSION=""
-	fi
-	if test "$KERNEL_RELEASE" = ""; then
-		KERNEL_RELEASE="1"
-	fi
+	if test "$CONFIG_KERNEL_VERSION" = "stable"; then
+		CONFIG_KERNEL_VERSION="$(linux_via_http_get_version)"
 
-	if test "$CONFIG_FILE"; then
-		if test -f "$CONFIG_FILE"; then
-			CONFIG_FILE="$(realpath $CONFIG_FILE)"
-		else
-			echo "No such file: $CONFIG_FILE" | sent_message --STDERR
+		if test "$CONFIG_KERNEL_VERSION" = "hacked"; then
+			echo "kernel.org was hacked" | sent_message --STDERR
 			return 1
 		fi
 	fi
 
-	if test "$CACHE"; then
-		if test -d "$CACHE"; then
-			CACHE="$(realpath $CACHE)"
+	if test "$__KERNEL_NAME" = ""; then
+		__KERNEL_NAME="$CONFIG_KERNEL_NAME"
+	fi
+	if test "$__KERNEL_VERSION" = ""; then
+		__KERNEL_VERSION="$CONFIG_KERNEL_VERSION"
+	fi
+	if test "$__KERNEL_RELEASE" = ""; then
+		__KERNEL_RELEASE="$CONFIG_KERNEL_RELEASE"
+	fi
+
+	if test "$__CONFIG_FILE"; then
+		if test -f "$__CONFIG_FILE"; then
+			__CONFIG_FILE="$(realpath $__CONFIG_FILE)"
+
+			V_CONFIG_FILE_HASH="$(md5sum $__CONFIG_FILE)"
+			V_CONFIG_FILE_HASH="${V_CONFIG_FILE_HASH%% *}"
+
+			CONFIG_KERNEL_RELEASE="$V_CONFIG_FILE_HASH"
 		else
-			echo "No such directory: $CACHE" | sent_message --STDERR
+			echo "No such file: $__CONFIG_FILE" | sent_message --STDERR
 			return 1
 		fi
 	fi
 
-	if test "$INSTALL_PATH"; then
-		if test -d "$INSTALL_PATH"; then
-			INSTALL_PATH="$(realpath $INSTALL_PATH)"
+	if test "$__INSTALL_PATH"; then
+		if test -d "$__INSTALL_PATH"; then
+			__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
 		else
-			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
+			echo "No such directory: $__INSTALL_PATH" | sent_message --STDERR
 			return 1
 		fi
 	else
-		INSTALL_PATH="$(mktemp --directory --quiet root-XXXXXXXXXX)"
-		INSTALL_PATH="$(realpath $INSTALL_PATH)"
+		__INSTALL_PATH="$(mktemp --directory --quiet root-XXXXXXXXXX)"
+		__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
 	fi
 
-	if test "$FORCE"; then
+	if test "$__FORCE"; then
 		__FORCE_DOWNLOAD="--force-download"
 		__FORCE_REBUILD="--force-rebuild"
 	else
-		BUILD="$KERNEL_NAME-$KERNEL_RELEASE#$KERNEL_VERSION.pkg.tar"
-
-		if test -f "$CACHE/$BUILD"; then
-			echo "Cache for $KERNEL_NAME available" | sent_message
-			if extract "$INSTALL_PATH" "$CACHE" "$BUILD"; then
-				echo "Install $KERNEL_NAME from cache" | sent_message
-				return 0
-			else
-				echo "Install $KERNEL_NAME from cache fails, continue" | sent_message
-			fi
-
-		fi
-
 		__FORCE_DOWNLOAD=""
 		__FORCE_REBUILD=""
-	fi
 
-	echo "Looking up for $KERNEL_NAME" | sent_message
-
-	linux_via_http "$KERNEL_VERSION"           \
-		$__FORCE_DOWNLOAD                  \
-		--kernel-name "$KERNEL_NAME"       \
-		--kernel-version "$KERNEL_VERSION" \
-		--kernel-release "$KERNEL_RELEASE" \
-		--cache "$CACHE"
-
-	if test -d "$KERNEL_SOURCE"; then
-
-		linux_build "$KERNEL_SOURCE"               \
-			$__FORCE_REBUILD                   \
-			--kernel-name "$KERNEL_NAME"       \
-			--kernel-version "$KERNEL_VERSION" \
-			--kernel-release "$KERNEL_RELEASE" \
-			--config-file "$CONFIG_FILE"       \
-			--install-path "$INSTALL_PATH"
-
-	else
-		return 1
-	fi
-
-	if test -d "$CACHE"; then
-		BUILD="$KERNEL_NAME-$KERNEL_RELEASE#$KERNEL_VERSION.pkg.tar"
-
-		if tar --create --file="$CACHE/$BUILD" --directory="$INSTALL_PATH" .; then
-			echo "Cached [$CACHE/$BUILD]" | sent_message
-		else
-			echo "Cache failed [$CACHE/$BUILD]" | sent_message
+		if test -f "$CONFIG_CACHE_PATH/$__KERNEL_NAME-$__KERNEL_RELEASE#$__KERNEL_VERSION.pkg.tar"; then
+			extract "$__INSTALL_PATH" "$CONFIG_CACHE_PATH" "$__KERNEL_NAME-$__KERNEL_RELEASE#$__KERNEL_VERSION.pkg.tar"
+			return 0
 		fi
 	fi
 
-	return 0
-}
+	linux_via_http                               \
+		--kernel-name "$__KERNEL_NAME"       \
+		--kernel-version "$__KERNEL_VERSION" \
+		--kernel-release "$__KERNEL_RELEASE" \
+		$__FORCE_DOWNLOAD                    \
+		|| return 1
 
-linux_build() {
-	KERNEL_NAME=""
-	KERNEL_VERSION=""
-	KERNEL_RELEASE=""
-	KERNEL_SOURCE=""
-	CONFIG_FILE=""
-	INSTALL_PATH=""
-	FORCE_REBUILD=""
+	linux_build                                  \
+		--kernel-name "$__KERNEL_NAME"       \
+		--kernel-version "$__KERNEL_VERSION" \
+		--kernel-release "$__KERNEL_RELEASE" \
+		--build-path "$V_BUILD_PATH"         \
+		--config-file "$__CONFIG_FILE"       \
+		--install-path "$__INSTALL_PATH"     \
+		$__FORCE_REBUILD                     \
+		|| return 1
 
-	while ! test "$#" = "0"; do
-		case "$1" in
-			"--kernel-name") KERNEL_NAME="$2" ; shift ;;
-			"--kernel-version") KERNEL_VERSION="$2" ; shift ;;
-			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
-			"--config-file") CONFIG_FILE="$2" ; shift ;;
-			"--install-path") INSTALL_PATH="$2" ; shift ;;
-			"--force-rebuild") FORCE_REBUILD="+" ;;
-			"-"*) echo "invalid option $1" ;;
-			*)
-				if test "$KERNEL_SOURCE" = ""; then
-					KERNEL_SOURCE="$1"
-				fi
-				;;
-		esac
-		shift
-	done
-
-	echo "Build [$KERNEL_SOURCE]" | sent_message
-
-	cd "$KERNEL_SOURCE"
-
-	make defconfig
-
-	make kvm_guest.config
-
-	# SquashFS + OverlayFS
-	scripts/config -e OVERLAY_FS
-
-	scripts/config -e SQUASHFS
-	scripts/config -e SQUASHFS_XZ
-
-	make olddefconfig
-
-	make -j $(($(nproc) + 1))
-
-	make INSTALL_MOD_PATH="$INSTALL_PATH" modules_install
-
-	install -D "arch/x86/boot/bzImage" "$INSTALL_PATH/boot/bzImage"
-
-	echo "Install $KERNEL_NAME $KERNEL_VERSION [$INSTALL_PATH]" | sent_message
+	tar --create --file="$CONFIG_CACHE_PATH/$__KERNEL_NAME-$__KERNEL_RELEASE#$__KERNEL_VERSION.pkg.tar" --directory="$__INSTALL_PATH" "."
 
 	return 0
 }
 
-linux_via_git() {
-	return 255
-}
+linux_via_http_get_version() {
+	V_KERNEL_VERSION=$(wget --timeout 5 --output-document - --quiet www.kernel.org | grep -A 1 latest_link)
+	V_KERNEL_VERSION=${V_KERNEL_VERSION##*.tar.xz\">}
+	V_KERNEL_VERSION=${V_KERNEL_VERSION%</a>*}
 
-linux_via_http() {
-	KERNEL_NAME=""
-	KERNEL_VERSION=""
-	KERNEL_RELEASE=""
-	KERNEL_SOURCE=""
-	SOURCE_DIRECTORY=""
-	FORCE_DOWNLOAD=""
-	CACHE=""
-
-	while ! test "$#" = "0"; do
-		case "$1" in
-			"--kernel-name") KERNEL_NAME="$2" ; shift ;;
-			"--kernel-version") KERNEL_VERSION="$2" ; shift ;;
-			"--kernel-release") KERNEL_RELEASE="$2" ; shift ;;
-			"--source-directory"|"-s") SOURCE_DIRECTORY="$2" ; shift ;;
-			"--force-download"|"-f") FORCE_DOWNLOAD="yes" ;;
-			"--cache"|"-c") CACHE="$2" ; shift ;;
-			"-"*)
-				echo "invalid option $1"
-				return 1
-				;;
-			*)
-				if test "$KERNEL_VERSION" = ""; then
-					KERNEL_VERSION="$1"
-				fi
-				;;
-		esac
-		shift
-	done
-
-	if test "$KERNEL_VERSION" = ""; then
-		KERNEL_VERSION=$(wget --timeout 5 --output-document - --quiet www.kernel.org | grep -A 1 latest_link)
-		KERNEL_VERSION=${KERNEL_VERSION##*.tar.xz\">}
-		KERNEL_VERSION=${KERNEL_VERSION%</a>*}
-	else
-		KERNEL_VERSION="$KERNEL_VERSION"
-	fi
-
-	case "$KERNEL_VERSION" in
-		[0-9]*.[0-9]*.0) KERNEL_VERSION="${KERNEL_VERSION%.*}" ;;
-		[0-9]*.[0-9]*.[0-9]*) ;;
-		*)
-			echo "kernel.org was hacked or invalid version: $KERNEL_VERSION"
-			return 1
+	case "$V_KERNEL_VERSION" in
+		[0-9]*.[0-9]*.0)
+			V_KERNEL_VERSION="${V_KERNEL_VERSION%.*}"
+			echo "$V_KERNEL_VERSION"
+			return 0
+			;;
+		[0-9]*.[0-9]*.[0-9]*)
+			echo "$V_KERNEL_VERSION"
+			return 0
 			;;
 	esac
 
-	if test -d "$SOURCE_DIRECTORY"; then
-		echo noop
-	else
-		SOURCE_DIRECTORY="$(pwd)"
-	fi
+	echo "hacked"
+	return 1
+}
 
-	LOCAL_DIRECTORY="$SOURCE_DIRECTORY"
-	LOCAL_FILE="linux-$KERNEL_VERSION.tar.xz"
+linux_via_http() {
+	__KERNEL_NAME=""
+	__KERNEL_VERSION=""
+	__KERNEL_RELEASE=""
+	__FORCE_DOWNLOAD=""
 
-	REMOTE_DIRECTORY="/pub/linux/kernel/v${KERNEL_VERSION%%.*}.x"
-	REMOTE_FILE="linux-$KERNEL_VERSION.tar.xz"
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--kernel-name") __KERNEL_NAME="$2" ; shift ;;
+			"--kernel-version") __KERNEL_VERSION="$2" ; shift ;;
+			"--kernel-release") __KERNEL_RELEASE="$2" ; shift ;;
+			"--force-download") __FORCE_DOWNLOAD="+" ;;
+			"-"*) echo "Invalid option: $1" | sent_message --STDERR ; return 1 ;;
+			*) echo "Invalid string: $1" | sent_message --STDERR ; return 1 ;;
+		esac
+		shift
+	done
 
-	URL="https://cdn.kernel.org$REMOTE_DIRECTORY/$REMOTE_FILE"
-	KERNEL_SOURCE="$LOCAL_DIRECTORY/linux-$KERNEL_VERSION"
+	V_LOCAL_DIRECTORY="$CONFIG_BUILD_PATH"
+	V_LOCAL_FILE="$__KERNEL_NAME-$__KERNEL_VERSION.tar.xz"
 
-	# TODO
-	#if test "$FORCE_DOWNLOAD"; then
-	#fi
+	V_REMOTE_DIRECTORY="/pub/$__KERNEL_NAME/kernel/v${__KERNEL_VERSION%%.*}.x"
+	V_REMOTE_FILE="$__KERNEL_NAME-$__KERNEL_VERSION.tar.xz"
 
-	if test -d "$KERNEL_SOURCE"; then
+	V_URL="https://cdn.kernel.org$V_REMOTE_DIRECTORY/$V_REMOTE_FILE"
+	V_BUILD_PATH="$V_LOCAL_DIRECTORY/$__KERNEL_NAME-$__KERNEL_VERSION"
 
-		echo "Source [$KERNEL_SOURCE]" | sent_message
+	if test -f "$V_LOCAL_DIRECTORY/$V_LOCAL_FILE"; then
 
-	elif test -f "$CACHE/$LOCAL_FILE"; then
-
-		echo "Extracting... [$CACHE/$LOCAL_FILE]" | sent_message
-
-		extract "$LOCAL_DIRECTORY" "$CACHE" "$LOCAL_FILE" || return 1
-
-		echo "Source [$KERNEL_SOURCE]" | sent_message
-
-	else
-
-		echo "Downloading... [$URL]" | sent_message
-
-		download "$URL" "$LOCAL_DIRECTORY" "$LOCAL_FILE" || return 1
-
-		echo "Extracting... [$LOCAL_DIRECTORY/$LOCAL_FILE]" | sent_message
-
-		extract "$LOCAL_DIRECTORY" "$LOCAL_DIRECTORY" "$LOCAL_FILE" || return 1
-
-		if test -d "$CACHE"; then
-
-			echo "Cached... [$CACHE/$LOCAL_FILE]" | sent_message
-
-			cp "$LOCAL_DIRECTORY/$LOCAL_FILE" "$CACHE/$LOCAL_FILE"
-
-		fi
-
-		echo "Source [$KERNEL_SOURCE]" | sent_message
+		rm -f "$V_LOCAL_DIRECTORY/$V_LOCAL_FILE"
 
 	fi
+
+	if test -d "$V_BUILD_PATH"; then
+
+		rm -r -f "$V_BUILD_PATH"
+
+	fi
+
+	if test "$__FORCE_DOWNLOAD"; then
+
+		download "$V_URL" "$V_LOCAL_DIRECTORY" "$V_LOCAL_FILE" || return 1
+
+		extract "$V_LOCAL_DIRECTORY" "$V_LOCAL_DIRECTORY" "$V_LOCAL_FILE" || return 1
+
+		install -D "$V_LOCAL_DIRECTORY/$V_LOCAL_FILE" "$CONFIG_CACHE_PATH/$V_LOCAL_FILE"
+
+	elif test -f "$CONFIG_CACHE_PATH/$V_LOCAL_FILE"; then
+
+		extract "$V_LOCAL_DIRECTORY" "$CONFIG_CACHE_PATH" "$V_LOCAL_FILE" || return 1
+
+	elif test -f "$V_LOCAL_DIRECTORY/$V_LOCAL_FILE"; then
+
+		extract "$V_LOCAL_DIRECTORY" "$V_LOCAL_DIRECTORY" "$V_LOCAL_FILE" || return 1
+
+	else
+
+		download "$V_URL" "$V_LOCAL_DIRECTORY" "$V_LOCAL_FILE" || return 1
+
+		extract "$V_LOCAL_DIRECTORY" "$V_LOCAL_DIRECTORY" "$V_LOCAL_FILE" || return 1
+
+		install -D "$V_LOCAL_DIRECTORY/$V_LOCAL_FILE" "$CONFIG_CACHE_PATH/$V_LOCAL_FILE"
+	fi
+
+	if test -d "$V_BUILD_PATH"; then
+
+		return 0
+
+	fi
+
+	return 1
+}
+
+linux_build() {
+	__KERNEL_NAME=""
+	__KERNEL_VERSION=""
+	__KERNEL_RELEASE=""
+	__BUILD_PATH=""
+	__CONFIG_FILE=""
+	__INSTALL_PATH=""
+	__FORCE_REBUILD=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--kernel-name") __KERNEL_NAME="$2" ; shift ;;
+			"--kernel-version") __KERNEL_VERSION="$2" ; shift ;;
+			"--kernel-release") __KERNEL_RELEASE="$2" ; shift ;;
+			"--build-path") __BUILD_PATH="$2" ; shift ;;
+			"--config-file") __CONFIG_FILE="$2" ; shift ;;
+			"--install-path") __INSTALL_PATH="$2" ; shift ;;
+			"--force-rebuild") __FORCE_REBUILD="+" ;;
+			"-"*) echo "Invalid option: $1" | sent_message --STDERR ; return 1 ;;
+			*) echo "Invalid string: $1" | sent_message --STDERR ; return 1 ;;
+		esac
+		shift
+	done
+
+	cd "$__BUILD_PATH"
+
+	if test -f "$__CONFIG_FILE"; then
+		
+		install -D "$__CONFIG_FILE" "$__BUILD_PATH/.config"
+
+		make olddefconfig
+
+	else
+
+		make defconfig
+
+		make kvm_guest.config
+
+		# SquashFS + OverlayFS
+		scripts/config -e OVERLAY_FS
+
+		scripts/config -e SQUASHFS
+		scripts/config -e SQUASHFS_XZ
+
+		make olddefconfig
+
+	fi
+
+	make -j $(($(nproc) + 1))
+
+	make INSTALL_MOD_PATH="$__INSTALL_PATH" modules_install
+
+	install -D "$__BUILD_PATH/arch/x86/boot/bzImage" "$__INSTALL_PATH/lib/modules/$__KERNEL_VERSION/vmlinuz" || return 1
 
 	return 0
 }
@@ -804,7 +770,7 @@ main_help() {
 	cat <<EOF
 $BOOTY_NAME $BOOTY_VERSION
 
-Usage: booty [DIRECTORY]... [IMAGE]
+Usage: booty build [DIRECTORY]... [IMAGE]
 
 Creates BIOS and/or UEFI compatible bootable images
 with operating system from specified directory.
@@ -817,7 +783,10 @@ with operating system from specified directory.
 
   --help                     Show this help
 
-Report about bugs & features to $(echo c3Bvb2ZpbmdAdm9nbGVhLm5ldAo= | base64 -d)
+Example: booty build linux-install/ documents-and-settings/ boot-$(uname -m).iso
+
+         booty build --profile initramfs linux-minimal/ tiny-$(uname -m).iso
+
 EOF
 }
 
@@ -837,10 +806,7 @@ main_init() {
 				PROFILE="$2"
 				shift
 				;;
-			"--help"|"-h")
-				main_help | sent_message --STDOUT
-				return 0
-				;;
+			"--help"|"-h") main_help ; return 0 ;;
 			"-"*)
 				echo "Invalid option: $1" | sent_message --STDERR
 				return 1
@@ -925,31 +891,28 @@ main_exit() {
 }
 
 main() {
-	CONFIG_BUILD_PATH="$(pwd)"
-	CONFIG_CACHE_PATH="$XDG_CACHE_HOME"
-	CONFIG_KERNEL_NAME="linux"
-	CONFIG_KERNEL_VERSION="stable"
-	CONFIG_KERNEL_RELEASE="default"
+	test "$CONFIG_BUILD_PATH" || CONFIG_BUILD_PATH="$(pwd)"
+	test "$CONFIG_CACHE_PATH" || CONFIG_CACHE_PATH="$XDG_CACHE_HOME"
+
+	test "$CONFIG_KERNEL_NAME"    || CONFIG_KERNEL_NAME="linux"
+	test "$CONFIG_KERNEL_VERSION" || CONFIG_KERNEL_VERSION="stable"
+	test "$CONFIG_KERNEL_RELEASE" || CONFIG_KERNEL_RELEASE="default"
 
 	if test "$CONFIG_CACHE_PATH" = ""; then
 		CONFIG_CACHE_PATH="$HOME/.cache/booty"
 
-		install -D "$CONFIG_CACHE_PATH"
+		install -d "$CONFIG_CACHE_PATH"
 	fi
 
 	case "$1" in
+		"build") main_init $@ ; main_exit 0 ;;
 		"import") shift ; do_import $@ ;;
 		"export") shift ; do_export $@ ;;
 		"linux") shift ; linux $@ ;;
-		"linux_via_http") shift ; linux_via_http $@ ;;
-		"linux_via_git") shift ; linux_via_git $@ ;;
-		"linux_build") shift ; linux_build $@ ;;
 		"ramdisk") shift ; ramdisk $@ ;;
-		"") main_help | sent_message ;;
-		"test"|*)
-			main_init $@
-			main_exit 0
-			;;
+		"image") shift ; image $@ ;;
+		"run") shift ; $@ ;;
+		"") main_help ;;
 	esac
 }
 
