@@ -727,6 +727,8 @@ linux_via_http() {
 		KERNEL_VERSION=$(wget --timeout 5 --output-document - --quiet www.kernel.org | grep -A 1 latest_link)
 		KERNEL_VERSION=${KERNEL_VERSION##*.tar.xz\">}
 		KERNEL_VERSION=${KERNEL_VERSION%</a>*}
+	else
+		KERNEL_VERSION="$KERNEL_VERSION"
 	fi
 
 	case "$KERNEL_VERSION" in
@@ -802,10 +804,7 @@ main_help() {
 	cat <<EOF
 $BOOTY_NAME $BOOTY_VERSION
 
-Usage: booty [DIRECTORY]
-   or: booty linux [VERSION]
-   or: booty ramdisk
-   or: booty image SOURCE=DESTINATION...
+Usage: booty [DIRECTORY]... [IMAGE]
 
 Creates BIOS and/or UEFI compatible bootable images
 with operating system from specified directory.
@@ -813,18 +812,8 @@ with operating system from specified directory.
   -p, --profile <profile>    Creates bootable image with pre-defined options
 
                              Profiles:
-                               initramfs [default]
-                               overlayfs
-
-  -c, --cache <directory>    Storage for data like a binary kernels, sources
-                             and so on to prevent download it and building
-                             the same things again and again
-
-  --kernel-name linux,           Select kernel version to build and/or label
-  --kernel-version <version>,    for cache data.
-  --kernel-release <release>     
-
-  -v, --verbose              Verbosity level can be increased by multiples -vvvvv
+                               initramfs
+                               overlayfs [default]
 
   --help                     Show this help
 
@@ -846,10 +835,6 @@ main_init() {
 		case "$1" in
 			"--profile"|"-p")
 				PROFILE="$2"
-				shift
-				;;
-			"--cache"|"-c")
-				CACHE="$2"
 				shift
 				;;
 			"--help"|"-h")
@@ -940,6 +925,18 @@ main_exit() {
 }
 
 main() {
+	CONFIG_BUILD_PATH="$(pwd)"
+	CONFIG_CACHE_PATH="$XDG_CACHE_HOME"
+	CONFIG_KERNEL_NAME="linux"
+	CONFIG_KERNEL_VERSION="stable"
+	CONFIG_KERNEL_RELEASE="default"
+
+	if test "$CONFIG_CACHE_PATH" = ""; then
+		CONFIG_CACHE_PATH="$HOME/.cache/booty"
+
+		install -D "$CONFIG_CACHE_PATH"
+	fi
+
 	case "$1" in
 		"import") shift ; do_import $@ ;;
 		"export") shift ; do_export $@ ;;
@@ -948,16 +945,17 @@ main() {
 		"linux_via_git") shift ; linux_via_git $@ ;;
 		"linux_build") shift ; linux_build $@ ;;
 		"ramdisk") shift ; ramdisk $@ ;;
-		*)
+		"") main_help | sent_message ;;
+		"test"|*)
 			main_init $@
 			main_exit 0
 			;;
 	esac
 }
 
-trap "do_panic" HUP INT QUIT TERM
-
 readonly BOOTY_NAME="booty"
 readonly BOOTY_VERSION="2.0"
+
+trap "do_panic" HUP INT QUIT TERM
 
 main "$@"
