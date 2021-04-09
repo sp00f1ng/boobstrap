@@ -20,27 +20,27 @@ do_export() {
 }
 
 sent_message() {
-	STDERR="-"
-	STDOUT="+"
+	__STDERR="-"
+	__STDOUT="+"
 	INDENT=""
 
 	while ! test "$#" = "0"; do
 		case "$1" in
-			"--STDERR") STDERR="+" STDOUT="-" ;;
-			"--STDOUT") STDERR="-" STDOUT="+" ;;
+			"--STDERR") __STDERR="+" __STDOUT="-" ;;
+			"--STDOUT") __STDERR="-" __STDOUT="+" ;;
 		esac
 		shift
 	done
 
-	if test "$STDERR" = "+"; then
-		while read -r MESSAGE; do
-			echo "$INDENT$MESSAGE" >&2
+	if test "$__STDERR" = "+"; then
+		while read -r TEXT; do
+			echo "$INDENT$TEXT" >&2
 		done
 	fi
 
-	if test "$STDOUT" = "+"; then
-		while read -r MESSAGE; do
-			echo "$INDENT$MESSAGE" >&1
+	if test "$__STDOUT" = "+"; then
+		while read -r TEXT; do
+			echo "$INDENT$TEXT" >&1
 		done
 	fi
 }
@@ -49,64 +49,48 @@ sent_message() {
 # Image Section: Bootable image
 #
 image() {
-	INSTALL_PATH=""
-	IMAGE=""
+	__INSTALL_PATH=""
+	__IMAGE=""
 
 	while ! test "$#" = "0"; do
 		case "$1" in
-			"--install-path") INSTALL_PATH="$2" ; shift ;;
-			"--image") IMAGE="$2" ; shift ;;
-			"-"*)
-				echo "invalid option $1" | sent_message
-				;;
-			*)
-				if test "$INSTALL_PATH" = ""; then
-					INSTALL_PATH="$1"
-				else
-					break
-				fi
-				;;
+			"--install-path") __INSTALL_PATH="$2" ; shift ;;
+			"--image") __IMAGE="$2" ; shift ;;
+			"-"*) echo "Invalid option: $1" | sent_message ;;
 		esac
 		shift
 	done
 
-	if test "$IMAGE"; then
-		IMAGE="$(realpath $IMAGE)"
-	else
-		echo "Image not specified, add --image <file> for initramfs image" | sent_message --STDERR
-		return 1
-	fi
-
-	if test "$INSTALL_PATH"; then
-		if test -d "$INSTALL_PATH"; then
-			INSTALL_PATH="$(realpath $INSTALL_PATH)"
+	if test "$__INSTALL_PATH"; then
+		if test -d "$__INSTALL_PATH"; then
+			__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
 		else
-			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
+			echo "No such directory: $__INSTALL_PATH" | sent_message
 			return 1
 		fi
 	else
-		INSTALL_PATH="$(mktemp --directory --quiet image-XXXXXXXXXX)"
-		INSTALL_PATH="$(realpath $INSTALL_PATH)"
+		__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir image-XXXXXXXXXX)"
+		__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
+	fi
+
+	if test "$__IMAGE"; then
+		__IMAGE="$(realpath $__IMAGE)"
+	else
+		__IMAGE="$(realpath BOOT-$(uname -m).ISO)"
 	fi
 
 	while ! test "$#" = "0"; do
-		SOURCE="${1%%=*}"
-		DESTINATION="${1##*=}"
-		if test -f "$SOURCE"; then
-			if install -D "$SOURCE" "$INSTALL_PATH/$DESTINATION"; then
-				echo "[$SOURCE] [$INSTALL_PATH/$DESTINATION]" | sent_message
-			fi
+		V_SOURCE="${1%%=*}"
+		V_DESTINATION="${1##*=}"
+		if test -f "$V_SOURCE"; then
+			install -D "$V_SOURCE" "$__INSTALL_PATH/$V_DESTINATION"
 		fi
 		shift
 	done
 
-	echo "Install bootloader" | sent_message
+	image_install_bootloader "$__INSTALL_PATH"
 
-	image_install_bootloader "$INSTALL_PATH"
-
-	echo "Generate ISO 9660" | sent_message
-
-	image_generate_iso9660 "$INSTALL_PATH" "$IMAGE"
+	image_generate_iso9660 "$__INSTALL_PATH" "$__IMAGE"
 }
 
 image_install_bootloader() {
@@ -336,59 +320,52 @@ image_generate_iso9660() {
 }
 
 #
-# Initial RAM Disk Section: Build initramfs
+# Initial RAM Disk Section
 #
 
 ramdisk() {
-	INSTALL_PATH=""
-	IMAGE=""
+	__INSTALL_PATH=""
+	__IMAGE=""
 
 	while ! test "$#" = "0"; do
 		case "$1" in
-			"--install-path") INSTALL_PATH="$2" ; shift ;;
-			"--image") IMAGE="$2" ; shift ;;
-			"-"*)
-				echo "invalid option $1" | sent_message
-				;;
-			*)
-				if test "$INSTALL_PATH" = ""; then
-					INSTALL_PATH="$1"
-				fi
-				;;
+			"--install-path") __INSTALL_PATH="$2" ; shift ;;
+			"--image") __IMAGE="$2" ; shift ;;
+			"-"*) echo "Invalid option: $1" | sent_message ;;
 		esac
 		shift
 	done
 
-	if test "$IMAGE"; then
-		IMAGE="$(realpath $IMAGE)"
-	else
-		echo "Image not specified, add --image <file> for initramfs image" | sent_message --STDERR
-		return 1
-	fi
-
-	if test "$INSTALL_PATH"; then
-		if test -d "$INSTALL_PATH"; then
-			ROOT="$(realpath $INSTALL_PATH)"
+	if test "$__INSTALL_PATH"; then
+		if test -d "$__INSTALL_PATH"; then
+			__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
 		else
-			echo "No such directory: $INSTALL_PATH" | sent_message --STDERR
+			echo "No such directory: $__INSTALL_PATH" | sent_message --STDERR
 			return 1
 		fi
 	else
-		ROOT="$(mktemp --directory --quiet ramdisk-XXXXXXXXXX)"
-		ROOT="$(realpath $ROOT)"
+		__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir ramdisk-XXXXXXXXXX)"
+		__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
 	fi
 
-	ramdisk_make_directories "$ROOT"
+	if test "$__IMAGE"; then
+		__IMAGE="$(realpath $__IMAGE)"
+	else
+		__IMAGE="$(mktemp --quiet --tmpdir ramdisk-XXXXXXXXXX)"
+		__IMAGE="$(realpath $__IMAGE)"
+	fi
 
-	ramdisk_make_devices "$ROOT"
+	ramdisk_make_directories "$__INSTALL_PATH"
 
-	ramdisk_make_binaries "$ROOT"
+	ramdisk_make_devices "$__INSTALL_PATH"
 
-	install -D -m 0755 "/usr/share/booty/init.rc" "$ROOT/init"
+	ramdisk_make_binaries "$__INSTALL_PATH"
 
-	cd "$ROOT"
+	install -D -m 0755 "/usr/share/booty/init.rc" "$__INSTALL_PATH/init"
 
-	do_export > "$IMAGE"
+	cd "$__INSTALL_PATH"
+
+	do_export > "$__IMAGE"
 	
 	cd "$OLDPWD"
 
@@ -397,34 +374,18 @@ ramdisk() {
 
 ramdisk_make_directories() {
 	for dir in "/proc" "/sys" "/dev" "/run" "/sbin" "/bin" "/etc" "/usr/sbin" "/usr/bin" "/mnt" "/tmp"; do
-		mkdir -p "$1/$dir" || return 1
+		mkdir -p "$1/$dir"
 	done
-	
-	unset dir
 	
 	return 0
 }
 
 ramdisk_make_devices() {
 	for dev in "console" "tty" "tty1" "null"; do
-		cp -a "/dev/$dev" "$1/dev/$dev" || return 1
+		cp -a "/dev/$dev" "$1/dev/$dev"
 	done
 
 	return 0
-}
-
-lddtree() {
-	if test "$1" = ""; then
-		return 0
-	fi
-	
-	echo "$1"
-	
-	for dep in $(ldd "$1" | awk 'BEGIN{ORS="\n"}$1~/^\//{print $1}$3~/^\//{print $3}'); do
-		lddtree "$dep"
-	done
-	
-	unset dep
 }
 
 ramdisk_make_binaries() {
@@ -443,16 +404,28 @@ ramdisk_make_binaries() {
 
 				install -D "$dep" "$1/$dep" || return 1
 			done
-
-			unset dep
 		fi
 	done
 
 	return 0
 }
 
+lddtree() {
+	if test "$1" = ""; then
+		return 0
+	fi
+	
+	echo "$1"
+	
+	for dep in $(ldd "$1" | awk 'BEGIN{ORS="\n"}$1~/^\//{print $1}$3~/^\//{print $3}'); do
+		lddtree "$dep"
+	done
+
+	unset dep
+}
+
 #
-# Linux Section: Download & Build
+# Linux Section
 #
 
 download() {
@@ -567,7 +540,7 @@ linux() {
 			return 1
 		fi
 	else
-		__INSTALL_PATH="$(mktemp --directory --quiet root-XXXXXXXXXX)"
+		__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir root-XXXXXXXXXX)"
 		__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
 	fi
 
@@ -742,7 +715,6 @@ linux_build() {
 
 		# SquashFS + OverlayFS
 		scripts/config -e OVERLAY_FS
-
 		scripts/config -e SQUASHFS
 		scripts/config -e SQUASHFS_XZ
 
@@ -760,14 +732,14 @@ linux_build() {
 }
 
 #
-# Main Section: Application Data
+# Main Section
 #
 
 main_help() {
 	cat <<EOF
 $BOOTY_NAME $BOOTY_VERSION
 
-Usage: booty build <IMAGE> [DIRECTORY]...
+Usage: booty build [DIRECTORY]...
 
 Creates BIOS and/or UEFI compatible bootable images
 with operating system from specified directory.
@@ -804,11 +776,11 @@ main_init() {
 			*)
 				if test "$_IMAGE_" = ""; then
 					case "$1" in
-						*"."[Ii][Ss][Oo]) _IMAGE_="$(realpath $1)" ;;
-						*"."[Ii][Mm][Gg]) _IMAGE_="$(realpath $1)" ;;
-						*) echo "Invalid image: $1" | sent_message --STDERR ; return 1 ;;
+						*"."[Ii][Ss][Oo]) _IMAGE_="$(realpath $1)" ; continue ;;
+						*"."[Ii][Mm][Gg]) _IMAGE_="$(realpath $1)" ; continue ;;
 					esac
-				elif test -d "$1"; then
+				fi
+				if test -d "$1"; then
 					V_FILESYSTEM="$V_FILESYSTEM:$(realpath $1)"
 				else
 					echo "No such directory: $1" | sent_message --STDERR
@@ -826,10 +798,12 @@ main_init() {
 		*) __PROFILE="overlayfs" ;;
 	esac
 
-	if test "$PROFILE" = "overlayfs"; then
+	if test "$__PROFILE" = "overlayfs"; then
+		export TMPDIR
+
 		linux
 
-		ramdisk --image "$TMPDIR/ramdisk.img"
+		ramdisk
 
 		if test "$V_FILESYSTEM"; then
 
@@ -853,9 +827,19 @@ main_init() {
 			unset IFS
 		fi
 
-		image --image "$BOOT_IMAGE" \
-			"$TMPDIR/ramdisk/boot/bzImage=boot/vmlinuz" \
-			"$TMPDIR/ramdisk.img=boot/initrd"
+		for V_LINUX in "$TMPDIR/root-"*"/lib/modules/$CONFIG_KERNEL_VERSION/vmlinuz"; do
+			if test -f "$V_LINUX"; then
+				break
+			fi
+		done
+
+		for V_RAMDISK in "$TMPDIR/ramdisk-"*; do
+			if test -f "$V_RAMDISK"; then
+				break
+			fi
+		done
+
+		image "$V_KERNEL=boot/vmlinuz" "$V_RAMDISK=boot/initrd"
 	fi
 }
 
@@ -882,7 +866,7 @@ main() {
 	fi
 
 	case "$1" in
-		"build") main_init $@ ; main_exit 0 ;;
+		"build") shift ; main_init $@ ; main_exit 0 ;;
 		"import") shift ; do_import $@ ;;
 		"export") shift ; do_export $@ ;;
 		"linux") shift ; linux $@ ;;
