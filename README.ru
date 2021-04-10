@@ -2,7 +2,7 @@
 
   # make install
  
-  # booty linux-directory/ my-linux.iso
+  # booty build linux-directory/ my-linux.iso
 
   # qemu-system-x86_64 -cdrom my-linux.iso
 
