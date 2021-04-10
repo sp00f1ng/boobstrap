@@ -135,11 +135,15 @@ main_init ()
 
 main_exit ()
 {
-	if test -d "$TMPDIR"; then
-		echo rm -r -f "$TMPDIR"
-	fi
+	#if test -d "$TMPDIR"; then
+	#	rm -r -f "$TMPDIR"
+	#fi
 
-	exit "$1"
+	case "$1" in
+		"0") exit 0 ;;
+	esac
+
+	exit 1
 }
 
 main_help ()
@@ -175,20 +179,23 @@ do_test ()
 		return 0
 	fi
 
-	echo "No such executable: $_PATH_" | sent_message --verbose-level 5
+	echo "No such executable: $_PATH_" | sent_message
 
 	return 1
 }
 
-do_import() {
+do_import ()
+{
 	cpio --extract --make-directories --format "newc" --quiet
 }
 
-do_export() {
+do_export ()
+{
 	find . -print0 | cpio --create --format "newc" --null --quiet
 }
 
-sent_message() {
+sent_message ()
+{
 	__STDERR="-"
 	__STDOUT="+"
 	__VERBOSE_LEVEL="3"
@@ -219,7 +226,8 @@ sent_message() {
 	fi
 }
 
-linux() {
+linux ()
+{
 	__KERNEL_NAME=""
 	__KERNEL_VERSION=""
 	__KERNEL_RELEASE=""
@@ -323,7 +331,8 @@ linux() {
 	return 0
 }
 
-linux_via_http_get_version() {
+linux_via_http_get_version ()
+{
 	V_KERNEL_VERSION=$(wget --timeout 5 --output-document - --quiet www.kernel.org | grep -A 1 latest_link)
 	V_KERNEL_VERSION=${V_KERNEL_VERSION##*.tar.xz\">}
 	V_KERNEL_VERSION=${V_KERNEL_VERSION%</a>*}
@@ -344,7 +353,8 @@ linux_via_http_get_version() {
 	return 1
 }
 
-linux_via_http() {
+linux_via_http ()
+{
 	__KERNEL_NAME=""
 	__KERNEL_VERSION=""
 	__KERNEL_RELEASE=""
@@ -417,7 +427,8 @@ linux_via_http() {
 	return 1
 }
 
-linux_build() {
+linux_build ()
+{
 	__KERNEL_NAME=""
 	__KERNEL_VERSION=""
 	__KERNEL_RELEASE=""
@@ -475,9 +486,156 @@ linux_build() {
 	return 0
 }
 
-#
-# Image Section: Bootable image
-#
+ramdisk() {
+	__INSTALL_PATH=""
+	__IMAGE=""
+
+	while ! test "$#" = "0"; do
+		case "$1" in
+			"--install-path") __INSTALL_PATH="$2" ; shift ;;
+			"--image") __IMAGE="$2" ; shift ;;
+			"-"*) echo "Invalid option: $1" | sent_message ;;
+		esac
+		shift
+	done
+
+	if test "$__INSTALL_PATH"; then
+		if test -d "$__INSTALL_PATH"; then
+			__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
+		else
+			echo "No such directory: $__INSTALL_PATH" | sent_message --STDERR
+			return 1
+		fi
+	else
+		__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir ramdisk-XXXXXXXXXX)"
+		__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
+	fi
+
+	if test "$__IMAGE"; then
+		__IMAGE="$(realpath $__IMAGE)"
+	else
+		__IMAGE="$(mktemp --quiet --tmpdir ramdisk-XXXXXXXXXX)"
+		__IMAGE="$(realpath $__IMAGE)"
+	fi
+
+	ramdisk_make_directories "$__INSTALL_PATH"
+
+	ramdisk_make_devices "$__INSTALL_PATH"
+
+	ramdisk_make_binaries "$__INSTALL_PATH"
+
+	install -D -m 0755 "/usr/share/booty/init.rc" "$__INSTALL_PATH/init"
+
+	cd "$__INSTALL_PATH"
+
+	do_export > "$__IMAGE"
+	
+	cd "$OLDPWD"
+
+	return 0
+}
+
+ramdisk_make_directories() {
+	for dir in "/proc" "/sys" "/dev" "/run" "/sbin" "/bin" "/etc" "/usr/sbin" "/usr/bin" "/mnt" "/tmp"; do
+		mkdir -p "$1/$dir"
+	done
+	
+	return 0
+}
+
+ramdisk_make_devices() {
+	for dev in "console" "tty" "tty1" "null"; do
+		cp -a "/dev/$dev" "$1/dev/$dev"
+	done
+
+	return 0
+}
+
+ramdisk_make_binaries() {
+	for exe in "sh" "env" "switch_root" "mount" "umount" "mkdir" "rmdir" "cp" "mv" "rm" "mknod" "cpio" "sleep"; do
+		LOCATE_EXE="$(which $exe)"
+
+		if test "$LOCATE_EXE"; then
+			LOCATE_DEP=""
+
+			for dep in $(lddtree $LOCATE_EXE); do
+				LOCATE_DEP="$LOCATE_DEP $dep"
+
+				if test -f "$1/$dep"; then
+					continue
+				fi
+
+				install -D "$dep" "$1/$dep" || return 1
+			done
+		fi
+	done
+
+	return 0
+}
+
+lddtree() {
+	if test "$1" = ""; then
+		return 0
+	fi
+	
+	echo "$1"
+	
+	for dep in $(ldd "$1" | awk 'BEGIN{ORS="\n"}$1~/^\//{print $1}$3~/^\//{print $3}'); do
+		lddtree "$dep"
+	done
+
+	unset dep
+}
+
+download() {
+	URL="$1"
+	DIRECTORY="$2"
+	FILE="$3"
+	APPEND=""
+
+	if ! test -d "$DIRECTORY"; then
+		return 1
+	fi
+
+	if test -f "$DIRECTORY/$FILE"; then
+		return 1
+	fi
+
+	if test -f "$DIRECTORY/$FILE.part"; then
+		APPEND="--continue"
+	fi
+
+	wget --timeout 5 --output-document="$DIRECTORY/$FILE.part" $APPEND --quiet "$URL" || return 1
+
+	mv "$DIRECTORY/$FILE.part" "$DIRECTORY/$FILE" || return 1
+
+	return 0
+}
+
+extract() {
+	DESTINATION="$1"
+	DIRECTORY="$2"
+	FILE="$3"
+
+	if ! test -d "$DESTINATION"; then
+		return 1
+	fi
+
+	if ! test -d "$DIRECTORY"; then
+		return 1
+	fi
+
+	if ! test -f "$DIRECTORY/$FILE"; then
+		return 1
+	fi
+
+	if ! tar --get --file="$DIRECTORY/$FILE" --directory="$DESTINATION"; then
+		return 1
+	fi
+
+	return 0
+}
+
 image() {
 	__INSTALL_PATH=""
 	__IMAGE=""
@@ -674,12 +832,6 @@ menuentry "Boot using Overlay FS (Use /dev/sda for data)" {
 EOF
 }
 
-image_install_syslinux() {
-	# TODO syslinux
-	# FIXME syslinux: legacy boot + gpt is just broken on ~May 2020
-	return 1
-}
-
 image_search_bootloader() {
 	for dir in "/usr/lib/grub" "/lib/grub"; do
 		if test -d "$dir/i386-pc"; then
@@ -692,28 +844,6 @@ image_search_bootloader() {
 			GRUB_EFI_DATA="$dir/x86_64-efi"
 		fi
 	done
-	for dir in "/usr/share/syslinux" "/usr/lib/syslinux/bios"; do
-		if test -f "$dir/mbr.bin"; then
-			SYSLINUX_BIOS_MBR="$dir/mbr.bin"
-		fi
-		if test -f "$dir/gptmbr.bin"; then
-			SYSLINUX_BIOS_GPTMBR="$dir/gptmbr.bin"
-		fi
-		if test -f "$dir/isolinux.bin"; then
-			SYSLINUX_BIOS_ISOLINUX="$dir/isolinux.bin"
-		fi
-		if test -f "$dir/ldlinux.c32"; then
-			SYSLINUX_BIOS_LDLINUX="$dir/ldlinux.c32"
-		fi
-	done
-	for dir in "/usr/share/syslinux/efi64" "/usr/lib/syslinux/efi64"; do
-		if test -f "$dir/syslinux.efi"; then
-			SYSLINUX_UEFI_EFIBOOT="$dir/syslinux.efi"
-		fi
-		if test -f "$dir/ldlinux.e64"; then
-			SYSLINUX_UEFI_LDLINUX="$dir/ldlinux.e64"
-		fi
-	done
 }
 
 image_generate_iso9660() {
@@ -722,10 +852,6 @@ image_generate_iso9660() {
 	COMMAND=""
 
 	if test "$COMMAND" = ""; then
-		if command -v "xorrisofs"; then
-			COMMAND="xorrisofs"
-		fi
-
 		if command -v "genisoimage"; then
 			COMMAND="genisoimage"
 		fi
@@ -740,164 +866,6 @@ image_generate_iso9660() {
 			-b "boot/grub/bios.img" -no-emul-boot -boot-load-size 4 -boot-info-table \
 			-eltorito-alt-boot -e "efi/boot/floppy.img" -no-emul-boot \
 			-o "$IMAGE" "$INSTALL_PATH"
-	fi
-
-	if test "$COMMAND" = "xorrisofs"; then
-		# TODO
-		return 1
-	fi
-	return 0
-}
-
-#
-# Initial RAM Disk Section
-#
-
-ramdisk() {
-	__INSTALL_PATH=""
-	__IMAGE=""
-
-	while ! test "$#" = "0"; do
-		case "$1" in
-			"--install-path") __INSTALL_PATH="$2" ; shift ;;
-			"--image") __IMAGE="$2" ; shift ;;
-			"-"*) echo "Invalid option: $1" | sent_message ;;
-		esac
-		shift
-	done
-
-	if test "$__INSTALL_PATH"; then
-		if test -d "$__INSTALL_PATH"; then
-			__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
-		else
-			echo "No such directory: $__INSTALL_PATH" | sent_message --STDERR
-			return 1
-		fi
-	else
-		__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir ramdisk-XXXXXXXXXX)"
-		__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
-	fi
-
-	if test "$__IMAGE"; then
-		__IMAGE="$(realpath $__IMAGE)"
-	else
-		__IMAGE="$(mktemp --quiet --tmpdir ramdisk-XXXXXXXXXX)"
-		__IMAGE="$(realpath $__IMAGE)"
-	fi
-
-	ramdisk_make_directories "$__INSTALL_PATH"
-
-	ramdisk_make_devices "$__INSTALL_PATH"
-
-	ramdisk_make_binaries "$__INSTALL_PATH"
-
-	install -D -m 0755 "/usr/share/booty/init.rc" "$__INSTALL_PATH/init"
-
-	cd "$__INSTALL_PATH"
-
-	do_export > "$__IMAGE"
-	
-	cd "$OLDPWD"
-
-	return 0
-}
-
-ramdisk_make_directories() {
-	for dir in "/proc" "/sys" "/dev" "/run" "/sbin" "/bin" "/etc" "/usr/sbin" "/usr/bin" "/mnt" "/tmp"; do
-		mkdir -p "$1/$dir"
-	done
-	
-	return 0
-}
-
-ramdisk_make_devices() {
-	for dev in "console" "tty" "tty1" "null"; do
-		cp -a "/dev/$dev" "$1/dev/$dev"
-	done
-
-	return 0
-}
-
-ramdisk_make_binaries() {
-	for exe in "sh" "env" "switch_root" "mount" "umount" "mkdir" "rmdir" "cp" "mv" "rm" "mknod" "cpio" "sleep"; do
-		LOCATE_EXE="$(which $exe)"
-
-		if test "$LOCATE_EXE"; then
-			LOCATE_DEP=""
-
-			for dep in $(lddtree $LOCATE_EXE); do
-				LOCATE_DEP="$LOCATE_DEP $dep"
-
-				if test -f "$1/$dep"; then
-					continue
-				fi
-
-				install -D "$dep" "$1/$dep" || return 1
-			done
-		fi
-	done
-
-	return 0
-}
-
-lddtree() {
-	if test "$1" = ""; then
-		return 0
-	fi
-	
-	echo "$1"
-	
-	for dep in $(ldd "$1" | awk 'BEGIN{ORS="\n"}$1~/^\//{print $1}$3~/^\//{print $3}'); do
-		lddtree "$dep"
-	done
-
-	unset dep
-}
-
-download() {
-	URL="$1"
-	DIRECTORY="$2"
-	FILE="$3"
-	APPEND=""
-
-	if ! test -d "$DIRECTORY"; then
-		return 1
-	fi
-
-	if test -f "$DIRECTORY/$FILE"; then
-		return 1
-	fi
-
-	if test -f "$DIRECTORY/$FILE.part"; then
-		APPEND="--continue"
-	fi
-
-	wget --timeout 5 --output-document="$DIRECTORY/$FILE.part" $APPEND --quiet "$URL" || return 1
-
-	mv "$DIRECTORY/$FILE.part" "$DIRECTORY/$FILE" || return 1
-
-	return 0
-}
-
-extract() {
-	DESTINATION="$1"
-	DIRECTORY="$2"
-	FILE="$3"
-
-	if ! test -d "$DESTINATION"; then
-		return 1
-	fi
-
-	if ! test -d "$DIRECTORY"; then
-		return 1
-	fi
-
-	if ! test -f "$DIRECTORY/$FILE"; then
-		return 1
-	fi
-
-	if ! tar --get --file="$DIRECTORY/$FILE" --directory="$DESTINATION"; then
-		return 1
 	fi
 
 	return 0
