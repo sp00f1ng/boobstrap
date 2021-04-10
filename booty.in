@@ -1,16 +1,5 @@
 #! /usr/bin/env sh
 
-do_error() {
-	echo "$@" | sent_message --STDERR
-}
-
-do_panic() {
-	do_error ""
-	do_error "Interrupted"
-
-	main_exit 1
-}
-
 do_import() {
 	cpio --extract --make-directories --format "newc" --quiet
 }
@@ -57,6 +46,7 @@ image() {
 			"--install-path") __INSTALL_PATH="$2" ; shift ;;
 			"--image") __IMAGE="$2" ; shift ;;
 			"-"*) echo "Invalid option: $1" | sent_message ;;
+			*) break ;;
 		esac
 		shift
 	done
@@ -728,6 +718,8 @@ linux_build() {
 
 	install -D "$__BUILD_PATH/arch/x86/boot/bzImage" "$__INSTALL_PATH/lib/modules/$__KERNEL_VERSION/vmlinuz" || return 1
 
+	cd "$OLDPWD"
+
 	return 0
 }
 
@@ -808,38 +800,39 @@ main_init() {
 		if test "$V_FILESYSTEM"; then
 
 			V_ORDER="0"
+			V_FILESYSTEM="${V_FILESYSTEM#?}"
 
 			IFS=":"
 
-			for V_SOURCE in "$V_FILESYSTEM"; do
+			for V_SOURCE in $V_FILESYSTEM; do
 
 				V_ORDER="$(($V_ORDER + 10))"
-				V_DESTINATION="$V_ORDER-$(basename $V_SOURCE)"
+				V_DESTINATION="$V_ORDER-$(basename $V_SOURCE).squashfs"
+				V_APPEND_FILE="$V_SQUASHFS $TMPDIR/$V_DESTINATION=system/$V_DESTINATION"
 
 				/usr/bin/env mksquashfs                      \
 					"$V_SOURCE" "$TMPDIR/$V_DESTINATION" \
 					-b "1048576"                         \
 					-comp "xz"                           \
 					-Xdict-size "100%"
-
 			done
 
 			unset IFS
 		fi
 
-		for V_LINUX in "$TMPDIR/root-"*"/lib/modules/$CONFIG_KERNEL_VERSION/vmlinuz"; do
-			if test -f "$V_LINUX"; then
+		for CONFIG_KERNEL_PATH in "$TMPDIR/root-"*"/lib/modules/$CONFIG_KERNEL_VERSION/vmlinuz"; do
+			if test -f "$CONFIG_KERNEL_PATH"; then
 				break
 			fi
 		done
 
-		for V_RAMDISK in "$TMPDIR/ramdisk-"*; do
-			if test -f "$V_RAMDISK"; then
+		for CONFIG_RAMDISK_PATH in "$TMPDIR/ramdisk-"*; do
+			if test -f "$CONFIG_RAMDISK_PATH"; then
 				break
 			fi
 		done
 
-		image "$V_KERNEL=boot/vmlinuz" "$V_RAMDISK=boot/initrd"
+		image "$CONFIG_KERNEL_PATH=boot/vmlinuz" "$CONFIG_RAMDISK_PATH=boot/initrd" ${V_APPEND_FILE#?}
 	fi
 }
 
@@ -880,6 +873,6 @@ main() {
 readonly BOOTY_NAME="booty"
 readonly BOOTY_VERSION="2.0"
 
-trap "do_panic" HUP INT QUIT TERM
+trap "main_exit" HUP INT QUIT TERM
 
 main "$@"
