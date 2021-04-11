@@ -242,14 +242,6 @@ booty в процессе загрузки использует дополнит
 
 По-умолчанию `booty.init=/sbin/init`.
 
-## Known Issues
-
-### init as symlink
-
-Известный баг, когда booty не может загрузиться в систему, если `/sbin/init` это симлинк, указывающий например, на `/bin/busybox`, в то время как текущий `/` (корень) это всё ещё корень самого initramfs, а не системы, в которую booty собирается загрузиться.
-
-`readlink`???
-
 ## Proof of Concept
 
 Скриншоты различных дистрибутивов, доказывающие, что booty просто работает.
@@ -284,6 +276,14 @@ CRUX
 
 ![CRUX](https://github.com/sp00f1ng/booty/blob/htdocs/crux-linux.png?raw=true)
 
-----
+## Known Issues
+
+### init as symlink
+
+Известный баг, когда booty не может загрузиться в систему, если `/sbin/init` это симлинк, указывающий например, на `/bin/busybox`, в то время как текущий `/` (корень) это всё ещё корень самого initramfs, а не системы, в которую booty собирается загрузиться.
+
+`readlink`???
+
+---
 
 По всем вопросам, пожеланиям и предложениям пишите на форуме <a href="https://www.linux.org.ru/forum/">www.linux.org.ru/forum/</a> с пометкой <b>booty</b>.
