@@ -65,8 +65,8 @@ main_init ()
 			*)
 				if test "$_IMAGE_" = ""; then
 					case "$1" in
-						*"."[Ii][Ss][Oo]) _IMAGE_="$(realpath $1)" ; continue ;;
-						*"."[Ii][Mm][Gg]) _IMAGE_="$(realpath $1)" ; continue ;;
+						*"."[Ii][Ss][Oo]) _IMAGE_="$(realpath $1)" ; shift ; continue ;;
+						*"."[Ii][Mm][Gg]) _IMAGE_="$(realpath $1)" ; shift ; continue ;;
 					esac
 				fi
 				if test -d "$1"; then
