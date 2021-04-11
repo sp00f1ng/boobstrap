@@ -7,7 +7,7 @@ booty is a scripts complex for creating bootable GNU/Linux images.
 
 - [booty](#booty)
     - [Quick Start](#quick-start)
-    - [API](#API)
+    - [Interface](#Interface)
         - [import / export](#import--export)
     - [Boot Options](#boot-options)
         - [booty.use-shmfs](#booty.use-shmfs)
@@ -24,16 +24,24 @@ booty is a scripts complex for creating bootable GNU/Linux images.
 ## Quick Start
 
 ```sh
-make install
-booty build DIRECTORY/
-qemu-system-x86_64 -cdrom BOOT-x86_64.ISO
+# make install
+# booty build DIRECTORY/
+# qemu-system-x86_64 -cdrom BOOT-x86_64.ISO
 ```
 
-## API
+## Interface
+
+### booty build
+
+### booty linux
+
+### booty ramdisk
+
+### booty image
+
+### booty run
 
 ### Import / Export
-
-### exportroot / importroot
 
 For saving and loading features you can run "exportroot" and "importroot".
 
