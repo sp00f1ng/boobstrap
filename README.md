@@ -1,4 +1,4 @@
-![booty](https://github.com/sp00f1ng/booty/blob/htdocs/booty.jpg?raw=true)
+![booty](https://github.com/sp00f1ng/booty/blob/htdocs/logo.jpg?raw=true)
 
 booty is a scripts complex for creating bootable GNU/Linux images.
 
@@ -35,7 +35,7 @@ booty is a scripts complex for creating bootable GNU/Linux images.
 
 ### booty run
 
-### Import / Export
+### import / export
 
 For saving and loading features you can run "exportroot" and "importroot".
 
