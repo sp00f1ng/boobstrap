@@ -768,6 +768,11 @@ EOF
 
 	cat > "$INSTALL_PATH/boot/grub/grub.cfg" <<"EOF"
 set default=2
+set timeout=0
+
+set menu_color_highlight=white/dark-gray
+set menu_color_normal=black/light-gray
+set color_normal=light-blue/blue
 
 function load_video {
 	if [ x$feature_all_video_module = xy ]; then
