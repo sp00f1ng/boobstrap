@@ -12,17 +12,24 @@ booty - это набор POSIX shell скриптов для создания �
     - [Boot Options](#boot-options)
         - [booty.use-shmfs](#booty.use-shmfs)
         - [booty.use-overlayfs](#booty.use-overlayfs)
-        - [booty.search-rootfs](#booty.search-rootfs)
         - [booty.copy-to-ram](#booty.copy-to-ram)
+        - [booty.search-rootfs](#booty.search-rootfs)
         - [booty.rootfs-changes](#booty.rootfs-changes)
+        - [booty.size-of-rootfs](#booty.size-of-rootfs)
+        - [booty.init](#booty.init)
+    - [Screenshots](#screenshots)
     - [Known Issues](#known-issues)
         - [init as symlink](#init-as-symlink)
 
 ## Quick Start
 
+Установка, сборка и тестирование выполняется в три простых шага.
+
 ```sh
 make install
+
 booty build
+
 qemu-system-x86_64 -cdrom BOOT-x86_64.ISO
 ```
 
@@ -145,75 +152,101 @@ booty run ФУНКЦИЯ
 
 ### import / export
 
-For saving and loading features you can run "exportroot" and "importroot".
+Для сохранения и восстановления образов используйте специальные команды `booty import` и `booty export`.
 
-Well you have installed a "chroot" and you want to save the system state
-for future use, so run:
+Например, вы установили дистрибутив в директорию используя deboostrap, pacstrap и так далее.
 
-```sh
-# booty export linux-chroot/ > vanilla-system-state.img
-```
-
-And then, when you want to setup another system from this linux-chroot/, run:
+Чтобы эту директорию сохранить отдельным файлом, используйте:
 
 ```sh
-# booty import linux-chroot/ < vanilla-system-state.img
+cd linux-chroot/
+booty export > ~/vanilla-system-state.img
 ```
 
-It's usable when you only have one system state and many configurations.
+Затем, чтобы из файла установить дистрибутив в директорию, используйте:
+
+```sh
+cd linux-chroot/
+booty import < ~/vanilla-system-state.img
+```
+
+Это может быть удобно, когда вы имеете множество конфигураций систем, но при этом "ванильный" образ системы всегда где-то хранится.
+
+На самом деле вы можете использовать для этого любой более удобный инструмент.
 
 ## Boot Options
 
-booty's /init script can handle some kernel options ("cheats") while system boots.
+booty в процессе загрузки использует дополнительные опции, благодаря которым есть ряд интересных возможностей.
 
 ### booty.use-shmfs
 
-All system data will be extracted to the pure "tmpfs" filesystem and then continue booting.
+Опция `booty.use-shmfs` указывает, что все данные должны быть извлечены в одну tmpfs-директорию перед загрузкой.
 
-This action may require a lot of RAM.
+К корневой раздел с системой будет подключён как `tmpfs /`.
 
-Example, you have rootfs.cpio image with 1GB system stored in initrd image, and before
-system will be loaded completly they needed a 2GB of RAM: 1GB for rootfs.cpio and
-one more 1GB for extracted data. Use this with carefully. But if your image stores on
-ISO (not in initrd) you need only 1GB free of RAM.
+**Осторожно:** Данный метод загрузки использует много оперативной памяти.
+
+Если ваша система собрана в initramfs, то на короткий промежуток времени (на время распаковки) потребуется ещё столько же свободной оперативной памяти, сколько занимает сам initramfs. До тех пор, пока initramfs не будет целиком распакован в tmpfs корень и не переключится в него.
+
+При работе в tmpfs следует быть осторожным с опцией `booty.size-of-rootfs` и не выделять слишком большой процент объёма оперативной памяти под корневой раздел. К примеру, из-за роботов, которые брутфорсят SSH, размер /var/log постоянно растёт, и рано или поздно весь объём оперативной памяти может быть занят. Для решения этой проблемы вы можете смонтировать /var/log в отдельный tmpfs раздел, используя опцию `booty.volume`.
 
 ### booty.use-overlayfs
 
-All system data will be mounted as overlays.
+Опция `booty.use-overlayfs` монтирует все имеющиеся разделы как слои, накладывая их друг на друга.
 
-### booty.search-rootfs
+Использовать SquashFS для этого не обязательно. Всё, что было так или иначе добавлено в загрузку, будет смонтировано с использованием файловой системы Overlay FS: все прочие файловые системы, директории, блочные устройства...
 
-Option required argument: `booty.search-rootfs=file` or `booty.search-rootfs=directory`.
-
-Search selected file or the directory with overlays on storage devices while booting.
-
-By default all created overlays stores in /system/overlays directory, but you can create
-own overlay with naming "filesystem.squashfs", put in root of your HDD and set this option:
-
-```sh
-booty.search-rootfs=/filesystem.squashfs
-```
+**Интересный факт:** При использовании Overlay FS все изменения, которые происходят в системе, сохраняются в отдельной директории `/mnt/overlay_fs/rootfs-changes`. В буквальном смысле вы можете контролировать каждый новый файл в системе `find /mnt/overlay_fs/rootfs-changes`, либо же сохранять все изменения с удалённого хоста `scp -r REMOTE:/mnt/overlay_fs/rootfs-changes .`.
 
 ### booty.copy-to-ram
 
-Will copy overlays to the RAM before mounting.
+По-умолчанию, система загружается и работает с USB-накопителя. Опция `booty.copy-to-ram` копирует все данные с USB-накопителя в оперативную память, после чего устройство можно отключить от компьютера, а система продолжает загрузку уже из оперативной памяти.
 
-For example, you can boot with USB and unplug your USB-stick after system boots.
+### booty.search-rootfs
+
+Опция `booty.search-rootfs` ищет заданный файл или директорию с системой на всех имеющихся блочных устройствах, и при нахождении загружается в неё.
 
 ### booty.rootfs-changes
 
-While using Overlay FS all your data stores in SHMFS (tmpfs, ramffs) by default, but you can
-create a empty file on your storage device, then create any supported by kernel filesystem on
-this file (image) and use it as storage for your data, instead of storing data in temporarely SHMFS.
+По-умолчанию, при загрузке с использованием Overlay FS, все данные остаются в оперативной памяти и отображаются в директории `/mnt/overlay_fs/rootfs-changes`.
 
-Example `booty.rootfs-changes=/dev/sda1` for using whole /dev/sda1 as storage for any changes.
-While reboots cache-data is keep. Storage (file with filesystem) must be created manually.
+Опция `booty.rootfs-changes` позволяет задать блочное устройство или файл, куда следует сохранять все изменения. При этом блочное устройство или файл уже должны содержать в себе файловую систему, поддерживаемую ядром и доступную для записи.
+
+Например, `booty.rootfs-changes=/dev/sda1` будет использовать `/dev/sda1` для хранения всех данных.
+
+### booty.size-of-rootfs
+
+Опция `booty.size-of-rootfs` задаёт размер для корневого раздела в tmpfs, куда будет загружена система.
+
+По-умолчанию размер составляет 50% от объёма оперативной памяти.
+
+Если во время загрузки система зависает, но вы уверены, что объёма оперативной памяти должно хватать в притык, попробуйте задать `booty.size-of-rootfs=80%`.
+
+### booty.init
+
+Опция `booty.init` задаёт программу инициализации во время загрузки.
+
+По-умолчанию `booty.init=/sbin/init`.
 
 ## Known Issues
 
 ### init as symlink
 
-## Proof of Concept
+Известный баг, когда booty не может загрузиться в систему, если `/sbin/init` это симлинк, указывающий например, на `/bin/busybox`, в то время как текущий `/` (корень) это всё ещё корень самого initramfs, а не системы, в которую booty собирается загрузиться.
+
+`readlink`???
+
+## Screenshots
+
+![Alpine](https://github.com/sp00f1ng/booty/blob/htdocs/alpine-linux.png?raw=true)
+
+![Gentoo](https://github.com/sp00f1ng/booty/blob/htdocs/gentoo-linux.png?raw=true)
+
+![Arch](https://github.com/sp00f1ng/booty/blob/htdocs/arch-linux.png?raw=true)
+
+![Debian](https://github.com/sp00f1ng/booty/blob/htdocs/debian-linux.png?raw=true)
+
+![CRUX](https://github.com/sp00f1ng/booty/blob/htdocs/crux-linux.png?raw=true)
 
 ----
 
