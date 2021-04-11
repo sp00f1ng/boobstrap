@@ -13,6 +13,8 @@ booty is a scripts complex for creating bootable GNU/Linux images.
     - [Known Issues](#known-issues)
         - [init as symlink](#init-as-symlink)
 
+![booty](https://github.com/sp00f1ng/booty/blob/htdocs/booty.jpg?raw=true)
+
 ## Quick Start
 
 ```sh
