@@ -17,7 +17,7 @@ booty - это набор POSIX shell скриптов для создания �
         - [booty.rootfs-changes](#booty.rootfs-changes)
         - [booty.size-of-rootfs](#booty.size-of-rootfs)
         - [booty.init](#booty.init)
-    - [Screenshots](#screenshots)
+    - [Proof of Concept](#proof-of-concept)
     - [Known Issues](#known-issues)
         - [init as symlink](#init-as-symlink)
 
@@ -236,7 +236,7 @@ booty в процессе загрузки использует дополнит
 
 `readlink`???
 
-## Screenshots
+## Proof of Concept
 
 Скриншоты различных дистрибутивов, доказывающие, что booty просто работает.
 
