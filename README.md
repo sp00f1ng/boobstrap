@@ -238,13 +238,23 @@ booty в процессе загрузки использует дополнит
 
 ## Screenshots
 
+Alpine Linux
+
 ![Alpine](https://github.com/sp00f1ng/booty/blob/htdocs/alpine-linux.png?raw=true)
+
+Gentoo Linux
 
 ![Gentoo](https://github.com/sp00f1ng/booty/blob/htdocs/gentoo-linux.png?raw=true)
 
+Arch Linux
+
 ![Arch](https://github.com/sp00f1ng/booty/blob/htdocs/arch-linux.png?raw=true)
 
+Debian
+
 ![Debian](https://github.com/sp00f1ng/booty/blob/htdocs/debian-linux.png?raw=true)
+
+CRUX
 
 ![CRUX](https://github.com/sp00f1ng/booty/blob/htdocs/crux-linux.png?raw=true)
 
