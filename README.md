@@ -1,7 +1,5 @@
 booty - это набор POSIX shell скриптов для создания загрузочных образов операционных систем.
 
-По всем вопросам, пожеланиям и предложениям пишите на форуме www.linux.org.ru/forum/ с пометкой **booty**.
-
 - [booty](#booty)
     - [Quick Start](#quick-start)
     - [Interface](#Interface)
@@ -139,3 +137,7 @@ While reboots cache-data is keep. Storage (file with filesystem) must be created
 ### init as symlink
 
 ## Proof of Concept
+
+----
+
+По всем вопросам, пожеланиям и предложениям пишите на форуме <a href="https://www.linux.org.ru/forum/">www.linux.org.ru/forum/</a> с пометкой <b>booty</b>.
