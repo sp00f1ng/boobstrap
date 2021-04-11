@@ -41,7 +41,7 @@ main ()
 		"ramdisk") shift ; ramdisk $@   ;;
 		"image")   shift ; image $@     ;;
 		"run")     shift ; $@           ;;
-		"")                main_help    ;;
+		""|*)              main_help    ;;
 	esac
 
 	main_exit 0
