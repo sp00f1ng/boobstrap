@@ -1,6 +1,6 @@
-booty is a scripts complex for creating bootable GNU/Linux images.
-
 ![booty](https://github.com/sp00f1ng/booty/blob/htdocs/booty.jpg?raw=true)
+
+booty is a scripts complex for creating bootable GNU/Linux images.
 
 - [booty](#booty)
     - [Quick Start](#quick-start)
