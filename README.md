@@ -1,9 +1,6 @@
-# booty
+![# booty](https://github.com/sp00f1ng/booty/blob/htdocs/logo.jpg?raw=true)
 
 booty is a scripts complex for creating bootable GNU/Linux images.
-
-<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
-**Table of Contents**
 
 - [booty](#booty)
     - [Quick Start](#quick-start)
@@ -17,9 +14,6 @@ booty is a scripts complex for creating bootable GNU/Linux images.
         - [booty.rootfs-changes](#booty.rootfs-changes)
     - [Known Issues](#known-issues)
         - [init as symlink](#init-as-symlink)
-
-<!-- markdown-toc end -->
-
 
 ## Quick Start
 
@@ -49,13 +43,13 @@ Well you have installed a "chroot" and you want to save the system state
 for future use, so run:
 
 ```sh
-# exportroot "chroot/" > "vanilla-system-state.rootfs"
+# booty export linux-chroot/ > vanilla-system-state.img
 ```
 
-And then, when you want to setup another system from this "chroot/", run:
+And then, when you want to setup another system from this linux-chroot/, run:
 
 ```sh
-# importroot "just-another-chroot/" < "vanilla-system-state.rootfs"
+# booty import linux-chroot/ < vanilla-system-state.img
 ```
 
 It's usable when you only have one system state and many configurations.
