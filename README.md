@@ -1,4 +1,6 @@
-![# booty](https://github.com/sp00f1ng/booty/blob/htdocs/logo.jpg?raw=true)
+# booty
+
+![logo](https://github.com/sp00f1ng/booty/blob/htdocs/logo.jpg?raw=true)
 
 booty is a scripts complex for creating bootable GNU/Linux images.
 
