@@ -3,6 +3,11 @@ booty is a scripts complex for creating bootable GNU/Linux images.
 - [booty](#booty)
     - [Quick Start](#quick-start)
     - [Interface](#Interface)
+        - [booty build](#booty-build)
+        - [booty linux](#booty-linux)
+        - [booty ramdisk](#booty-ramdisk)
+        - [booty image](#booty-image)
+        - [booty run](#booty-run)
         - [import / export](#import--export)
     - [Boot Options](#boot-options)
         - [booty.use-shmfs](#booty.use-shmfs)
@@ -17,13 +22,39 @@ booty is a scripts complex for creating bootable GNU/Linux images.
 
 ```sh
 # make install
-# booty build DIRECTORY/
+# booty build
 # qemu-system-x86_64 -cdrom BOOT-x86_64.ISO
 ```
 
 ## Interface
 
 ### booty build
+
+```sh
+# booty build
+```
+Команда выполняет весь цикл сборки загрузочного образа. Все представленные далее параметры и опции можно комбинировать между собой в любом соотношении.
+
+```sh
+# booty build ДИРЕКТОРИЯ ДИРЕКТОРИЯ ДИРЕКТОРИЯ ...
+```
+
+Вы можете указать одну или несколько директорий, которые будут использованы для создания загрузочного образа.
+
+```sh
+# booty build ОБРАЗ ДИРЕКТОРИЯ ...
+```
+Опционально, вы можете указать название файла с образом в начале или конце списка.
+
+Значение по-умолчанию: `BOOT-$(uname -m).ISO`
+
+```sh
+# booty build ДИРЕКТОРИЯ -- ПАРАМЕТРЫ ЗАГРУЗКИ
+```
+
+Через два минуса `--` вы можете задать параметры загрузки, которые будут использованы загрузчиком.
+
+По-умолчанию вам будет предложено стандартное меню загрузчика с небольшой задержкой и список из нескольких вариантов для загрузки с различными опциями, но если установить параметры загрузки, то тогда система будет загружена моментально с указанными параметрами.
 
 ### booty linux
 
@@ -102,3 +133,5 @@ While reboots cache-data is keep. Storage (file with filesystem) must be created
 ## Known Issues
 
 ### init as symlink
+
+## Proof of Concept
