@@ -12,6 +12,7 @@ booty is a scripts complex for creating bootable GNU/Linux images.
         - [booty.rootfs-changes](#booty.rootfs-changes)
     - [Known Issues](#known-issues)
         - [init as symlink](#init-as-symlink)
+    - [About](#About)
 
 ## Quick Start
 
@@ -102,5 +103,9 @@ While reboots cache-data is keep. Storage (file with filesystem) must be created
 ## Known Issues
 
 ### init as symlink
+
+## About
+
+Thanks for using!
 
 ![booty](https://github.com/sp00f1ng/booty/blob/htdocs/booty.jpg?raw=true)
