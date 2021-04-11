@@ -266,7 +266,11 @@ Gentoo Linux
 
 Arch Linux
 
+**Внимание:** для создания загрузочного образа с Arch Linux необходимо использовать bootstrap, а не устанавливать систему с ISO-образа.
+
 ![Arch](https://github.com/sp00f1ng/booty/blob/htdocs/arch-linux.png?raw=true)
+
+![Arch](https://github.com/sp00f1ng/booty/blob/htdocs/arch-linux-failed.png?raw=true)
 
 Debian
 
