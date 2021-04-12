@@ -55,6 +55,7 @@ main_init ()
 	TMPDIR="$(pwd)"
 	TMPDIR="$(mktemp --directory --quiet boot-XXXXXXXXXX)"
 	TMPDIR="$(realpath $TMPDIR)"
+	export TMPDIR
 
 	_IMAGE_=""
 	__PROFILE=""
@@ -99,8 +100,6 @@ main_init ()
 	fi
 
 	if test "$__PROFILE" = "initramfs"; then
-		export TMPDIR
-
 		linux
 
 		V_RAMDISK__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir ramdisk-XXXXXXXXXX)"
@@ -148,8 +147,6 @@ main_init ()
 	fi
 
 	if test "$__PROFILE" = "overlayfs"; then
-		export TMPDIR
-
 		linux
 
 		ramdisk
@@ -321,9 +318,11 @@ linux ()
 	if test "$__KERNEL_NAME" = ""; then
 		__KERNEL_NAME="$CONFIG_KERNEL_NAME"
 	fi
+
 	if test "$__KERNEL_VERSION" = ""; then
 		__KERNEL_VERSION="$CONFIG_KERNEL_VERSION"
 	fi
+
 	if test "$__KERNEL_RELEASE" = ""; then
 		__KERNEL_RELEASE="$CONFIG_KERNEL_RELEASE"
 	fi
@@ -344,6 +343,8 @@ linux ()
 
 			# CONFIG_KERNEL_RELEASE="$V_CONFIG_FILE_SHA1SUM-$V_CONFIG_FILE_MD5SUM"
 			CONFIG_KERNEL_RELEASE="$V_CONFIG_FILE_SHA1SUM"
+
+			__KERNEL_RELEASE="$CONFIG_KERNEL_RELEASE"
 		else
 			echo "No such file: $__CONFIG_FILE" | sent_message --STDERR
 			return 1
