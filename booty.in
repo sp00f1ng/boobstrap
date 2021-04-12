@@ -16,6 +16,8 @@ main ()
 	test "$CONFIG_KERNEL_VERSION" || CONFIG_KERNEL_VERSION="stable"
 	test "$CONFIG_KERNEL_RELEASE" || CONFIG_KERNEL_RELEASE="default"
 
+	test "$CONFIG_BOOT_CMDLINE"   || CONFIG_BOOT_CMDLINE=""
+
 	do_test "awk"         || return 1
 	do_test "grep"        || return 1
 	do_test "tar"         || return 1
@@ -61,6 +63,7 @@ main_init ()
 		case "$1" in
 			"--profile"|"-p") __PROFILE="$2" ; shift ;;
 			"--help") main_help ; return 0 ;;
+			"--") shift ; CONFIG_BOOT_CMDLINE="$@" ; break ;;
 			"-"*) echo "Invalid option: $1" | sent_message --STDERR ; return 1 ;;
 			*)
 				if test "$_IMAGE_" = ""; then
@@ -835,6 +838,13 @@ menuentry "Boot using Overlay FS (Use /dev/sda for data)" {
 	initrd /boot/initrd
 }
 EOF
+
+	if test "$CONFIG_BOOT_CMDLINE"; then
+		cat > "$INSTALL_PATH/boot/grub/grub.cfg" <<EOF
+linux /boot/vmlinuz $CONFIG_BOOT_CMDLINE
+initrd /boot/initrd
+EOF
+	fi
 }
 
 image_search_bootloader() {
