@@ -94,7 +94,7 @@ cat .config | booty build
 По-умолчанию собирается ядро с конфигурацией `defconfig` и `kvm_guest.config`, а так же рядом других полезных (на личный взгляд автора) опций.
 
 ```sh
-booty build ~/gnulinux.iso ~/gnulinux-rootfs/ ~/rootfs-changes/ -- quiet < ~/.config
+booty build ~/gnulinux.iso ~/gnulinux-rootfs/ ~/rootfs-changes/ -- net.ifnames=0 quiet < ~/.config
 ```
 
 Это пример команды с полным набором всех возможных опций.
