@@ -85,9 +85,13 @@ booty build ДИРЕКТОРИЯ -- ПАРАМЕТРЫ ЗАГРУЗКИ
 
 ![GRUB2](https://github.com/sp00f1ng/booty/blob/htdocs/grub2-menu.png?raw=true)
 
-`cat .config | booty build`
+```sh
+cat .config | booty build
+```
 
-`booty build < .config`
+```sh
+booty build < .config
+```
 
 Вы можете указать свою конфигурацию ядра передав её через стандартный поток ввода / вывода.
 
