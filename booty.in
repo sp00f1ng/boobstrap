@@ -15,6 +15,7 @@ main ()
 	test "$CONFIG_KERNEL_NAME"    || CONFIG_KERNEL_NAME="linux"
 	test "$CONFIG_KERNEL_VERSION" || CONFIG_KERNEL_VERSION="stable"
 	test "$CONFIG_KERNEL_RELEASE" || CONFIG_KERNEL_RELEASE="default"
+	test "$CONFIG_KERNEL_DOTFILE" || CONFIG_KERNEL_DOTFILE=""
 
 	test "$CONFIG_BOOT_CMDLINE"   || CONFIG_BOOT_CMDLINE=""
 
@@ -89,6 +90,62 @@ main_init ()
 		?*) echo "Invalid profile: $__PROFILE" | sent_message --STDERR ; return 1 ;;
 		*) __PROFILE="overlayfs" ;;
 	esac
+
+	if ! test -t 0; then
+		CONFIG_KERNEL_DOTFILE="$(mktemp --quiet --tmpdir config-XXXXXXXXXX)"
+		CONFIG_KERNEL_DOTFILE="$(realpath $CONFIG_KERNEL_DOTFILE)"
+
+		cat "-" > "$CONFIG_KERNEL_DOTFILE"
+	fi
+
+	if test "$__PROFILE" = "initramfs"; then
+		export TMPDIR
+
+		linux
+
+		V_RAMDISK__INSTALL_PATH="$(mktemp --directory --quiet --tmpdir ramdisk-XXXXXXXXXX)"
+		V_RAMDISK__INSTALL_PATH="$(realpath $__INSTALL_PATH)"
+
+		V_RAMDISK__IMAGE="$(mktemp --quiet --tmpdir ramdisk-XXXXXXXXXX)"
+		V_RAMDISK__IMAGE="$(realpath $__IMAGE)"
+
+		if test "$V_FILESYSTEM"; then
+
+			V_FILESYSTEM="${V_FILESYSTEM#?}"
+
+			IFS=":"
+
+			for V_SOURCE in $V_FILESYSTEM; do
+				cp -a "$V_SOURCE/"* "$V_RAMDISK__INSTALL_PATH"
+			done
+
+			unset IFS
+		fi
+
+		cp -a "$TMPDIR/root-"*"/"* "$V_RAMDISK__INSTALL_PATH"
+		
+		ln -s -f "sbin/init" "$V_RAMDISK__INSTALL_PATH/init"
+
+		cd "$V_RAMDISK__INSTALL_PATH"
+
+		do_export > "$V_RAMDISK__IMAGE"
+
+		cd "$TMPDIR"
+
+		for CONFIG_KERNEL_PATH in "$TMPDIR/root-"*"/lib/modules/$CONFIG_KERNEL_VERSION/vmlinuz"; do
+			if test -f "$CONFIG_KERNEL_PATH"; then
+				break
+			fi
+		done
+
+		for CONFIG_RAMDISK_PATH in "$TMPDIR/ramdisk-"*; do
+			if test -f "$CONFIG_RAMDISK_PATH"; then
+				break
+			fi
+		done
+
+		image "$CONFIG_KERNEL_PATH=boot/vmlinuz" "$CONFIG_RAMDISK_PATH=boot/initrd" ${V_APPEND_FILE#?}
+	fi
 
 	if test "$__PROFILE" = "overlayfs"; then
 		export TMPDIR
@@ -271,14 +328,22 @@ linux ()
 		__KERNEL_RELEASE="$CONFIG_KERNEL_RELEASE"
 	fi
 
+	if test "$CONFIG_KERNEL_DOTFILE"; then
+		__CONFIG_FILE="$CONFIG_KERNEL_DOTFILE"
+	fi
+
 	if test "$__CONFIG_FILE"; then
 		if test -f "$__CONFIG_FILE"; then
 			__CONFIG_FILE="$(realpath $__CONFIG_FILE)"
 
-			V_CONFIG_FILE_HASH="$(md5sum $__CONFIG_FILE)"
-			V_CONFIG_FILE_HASH="${V_CONFIG_FILE_HASH%% *}"
+			V_CONFIG_FILE_SHA1SUM="$(sha1sum $__CONFIG_FILE)"
+			V_CONFIG_FILE_SHA1SUM="${V_CONFIG_FILE_SHA1SUM%% *}"
 
-			CONFIG_KERNEL_RELEASE="$V_CONFIG_FILE_HASH"
+			V_CONFIG_FILE_MD5SUM="$(md5sum $__CONFIG_FILE)"
+			V_CONFIG_FILE_MD5SUM="${V_CONFIG_FILE_MD5SUM%% *}"
+
+			# CONFIG_KERNEL_RELEASE="$V_CONFIG_FILE_SHA1SUM-$V_CONFIG_FILE_MD5SUM"
+			CONFIG_KERNEL_RELEASE="$V_CONFIG_FILE_SHA1SUM"
 		else
 			echo "No such file: $__CONFIG_FILE" | sent_message --STDERR
 			return 1
