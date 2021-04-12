@@ -89,13 +89,15 @@ booty build ДИРЕКТОРИЯ -- ПАРАМЕТРЫ ЗАГРУЗКИ
 cat .config | booty build
 ```
 
-```sh
-booty build < .config
-```
-
 Вы можете указать свою конфигурацию ядра передав её через стандартный поток ввода / вывода.
 
 По-умолчанию собирается ядро с конфигурацией `defconfig` и `kvm_guest.config`, а так же рядом других полезных (на личный взгляд автора) опций.
+
+```sh
+booty build ~/gnulinux.iso ~/gnulinux-rootfs/ ~/rootfs-changes/ -- quiet < ~/.config
+```
+
+Это пример команды с полным набором всех возможных опций.
 
 ### booty linux
 
