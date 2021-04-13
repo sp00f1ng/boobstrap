@@ -192,9 +192,11 @@ main_init ()
 
 main_exit ()
 {
-	#if test -d "$TMPDIR"; then
-	#	rm -r -f "$TMPDIR"
-	#fi
+	if test -d "$TMPDIR"; then
+		case "$(basename $TMPDIR)" in
+			"boot-"??????????) rm -r -f "$TMPDIR" ;;
+		esac
+	fi
 
 	case "$1" in
 		"0") exit 0 ;;
