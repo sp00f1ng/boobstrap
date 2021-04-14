@@ -25,8 +25,6 @@ main ()
 	do_test "wget"        || return 1
 	do_test "make"        || return 1
 	do_test "cpio"        || return 1
-	do_test "mkdosfs"     || return 1
-	do_test "genisoimage" || return 1
 
 	if test -d "$XDG_CACHE_HOME"; then
 		CONFIG_CACHE_PATH="$XDG_CACHE_HOME/.booty"
@@ -151,27 +149,32 @@ main_init ()
 
 		ramdisk
 
-		if test "$V_FILESYSTEM"; then
+		if do_test "mksquashfs"; then
 
-			V_ORDER="0"
-			V_FILESYSTEM="${V_FILESYSTEM#?}"
+			if test "$V_FILESYSTEM"; then
 
-			IFS=":"
+				V_ORDER="0"
+				V_FILESYSTEM="${V_FILESYSTEM#?}"
 
-			for V_SOURCE in $V_FILESYSTEM; do
+				IFS=":"
 
-				V_ORDER="$(($V_ORDER + 10))"
-				V_DESTINATION="$V_ORDER-$(basename $V_SOURCE).squashfs"
-				V_APPEND_FILE="$V_SQUASHFS $TMPDIR/$V_DESTINATION=system/$V_DESTINATION"
+				for V_SOURCE in $V_FILESYSTEM; do
 
-				/usr/bin/env mksquashfs                      \
-					"$V_SOURCE" "$TMPDIR/$V_DESTINATION" \
-					-b "1048576"                         \
-					-comp "xz"                           \
-					-Xdict-size "100%"
-			done
+					V_ORDER="$(($V_ORDER + 10))"
 
-			unset IFS
+					V_DESTINATION="$V_ORDER-$(basename $V_SOURCE).squashfs"
+					V_APPEND_FILE="$V_SQUASHFS $TMPDIR/$V_DESTINATION=system/$V_DESTINATION"
+
+					/usr/bin/env mksquashfs                      \
+						"$V_SOURCE" "$TMPDIR/$V_DESTINATION" \
+						-b "1048576"                         \
+						-comp "xz"                           \
+						-Xdict-size "100%"
+				done
+
+				unset IFS
+			fi
+
 		fi
 
 		for CONFIG_KERNEL_PATH in "$TMPDIR/root-"*"/lib/modules/$CONFIG_KERNEL_VERSION/vmlinuz"; do
@@ -185,6 +188,13 @@ main_init ()
 				break
 			fi
 		done
+
+		echo "KERNEL is ready: $CONFIG_KERNEL_PATH"
+		echo "INITRD is ready: $CONFIG_RAMDISK_PATH"
+
+		do_test "mkdosfs" || return 1
+		do_test "grub-mkimage" || return 1
+		do_test "genisoimage" || return 1
 
 		image "$CONFIG_KERNEL_PATH=boot/vmlinuz" "$CONFIG_RAMDISK_PATH=boot/initrd" ${V_APPEND_FILE#?}
 	fi
