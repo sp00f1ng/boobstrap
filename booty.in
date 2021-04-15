@@ -407,9 +407,12 @@ linux ()
 
 	if test -f "$__INSTALL_PATH/lib/modules/$__KERNEL_VERSION/vmlinuz"; then
 		tar --create --file="$CONFIG_CACHE_PATH/$__KERNEL_NAME-$__KERNEL_RELEASE#$__KERNEL_VERSION.pkg.tar" --directory="$__INSTALL_PATH" "."
+
+		return 0
 	fi
 
-	return 0
+	return 1
+
 }
 
 linux_via_http_get_version ()
@@ -942,24 +945,12 @@ image_search_bootloader() {
 image_generate_iso9660() {
 	INSTALL_PATH="$1"
 	IMAGE="$2"
-	COMMAND=""
 
-	if test "$COMMAND" = ""; then
-		if command -v "genisoimage"; then
-			COMMAND="genisoimage"
-		fi
-	else
-		echo "Install one: cdrkit, xorriso, mkisofs" | sent_message
-		return 1
-	fi
-
-	if test "$COMMAND" = "genisoimage"; then
-		genisoimage -v -J -r -V "BOOT-$(uname -m)" -A "BOOT-$(uname -m)" \
-			-input-charset "utf-8" \
-			-b "boot/grub/bios.img" -no-emul-boot -boot-load-size 4 -boot-info-table \
-			-eltorito-alt-boot -e "efi/boot/floppy.img" -no-emul-boot \
-			-o "$IMAGE" "$INSTALL_PATH"
-	fi
+	genisoimage -v -J -r -V "BOOT-$(uname -m)" -A "BOOT-$(uname -m)" \
+		-input-charset "utf-8" \
+		-b "boot/grub/bios.img" -no-emul-boot -boot-load-size 4 -boot-info-table \
+		-eltorito-alt-boot -eltorito-boot "efi/boot/floppy.img" -no-emul-boot \
+		-o "$IMAGE" "$INSTALL_PATH"
 
 	return 0
 }
