@@ -413,7 +413,7 @@ CRUX
 
 ---
 
--- // --
+Vladimir Vladimirovich (Telegram) -- **10 000 RUR** (via SberBank) on 5 May 2021
 
 ---
 

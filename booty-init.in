@@ -208,7 +208,7 @@ main() {
 	# FIXME
 	# NOT THIS SHIT AGAIN PLEASE
 	echo "Looking up for /sys/block devices..."
-	sleep 10
+	sleep 3
 
 	if test "$BUSYBOX" = ""; then
 		for nod in "/sys/block/"*; do
